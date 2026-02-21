@@ -10,211 +10,12 @@
 <h1>psqlODBC release notes</h1>
 <hr>
 <ol type="1">
- <h2><a id="17.00.0007">psqlODBC 17.00.0007 Release</a></h2>
- Changes:<br />
- <li>
-   Fix: GetDescRec on big-endian architectures <a href="https://github.com/postgresql/psqlodbc/pull/130">PR #130</a>
-   Author: <a href="https://github.com/df7cb">Christoph Berg</a>
- </li>
- <li>
-   Refactor: use operator(pg_catalog.operator) to fully qualify the operator <a href="https://github.com/postgresql/psqlodbc/pull/139">PR #139</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Fix: Make sure the null terminator len_for_wcs_term is included in the decision to realloc <a href="https://github.com/postgresql/psqlodbc/pull/144">PR #145</a>
-   Author: <a href="https://github.com/markmaker">Mark Maker</a>
- </li>
- <li>
-   Refactor: check the datestyle before setting it, if it is different than ISO change it, otherwise leave it as is <a href="https://github.com/postgresql/psqlodbc/pull/144">PR #144</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
-
- <h2><a id="17.00.0006">psqlODBC 17.00.0006 Release</a></h2>
- Changes:<br />
-  <li>
-   Refactor: Comprehensive variable naming improvements across the codebase <a href="https://github.com/postgresql/psqlodbc/pull/125">PR #125</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
-
- <li>
-   Enhancement: Renamed ConnectionClass structure variables for better readability (e.g., pqconn → postgresConnection, status → connectionStatus)
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Enhancement: Improved StatementClass structure variable names for clarity (e.g., hdbc → connectionHandle, curres → currentResult)
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Enhancement: Updated QResultClass structure variables with more descriptive names (e.g., rstatus → resultStatus, num_fields → columnCount)
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Documentation: Updated inline comments to reflect new variable naming conventions
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Maintenance: Removed unnecessary prefixes from variable names (e.g., __error_message → errorMessage)
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Enhancement: Replaced abbreviations with full words for better code readability
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Maintenance: Updated all references to renamed variables throughout the codebase
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Documentation: Added comprehensive variable mapping documentation for future reference
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- </ol>
-
-<ol type="1">
- <h2><a id="17.00.0005">psqlODBC 17.00.0005 Release</a></h2>
- Changes:<br />
- <li>
-   Security: fix possible int overflow <a href="https://github.com/postgresql/psqlodbc/pull/121">PR #121</a> fixes <a href="https://github.com/postgresql/psqlodbc/issues/119">issue #119</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Fix: Use memset if memset_s is not available <a href="https://github.com/postgresql/psqlodbc/pull/107">PR #107</a>
-   Author: <a href="https://github.com/faviansamatha">Favian (Ian) Samatha</a>
- </li>
- <li>
-   Feature: Safe sscanf implementation <a href="https://github.com/postgresql/psqlodbc/pull/108">PR #108</a>
-   Author: <a href="https://github.com/colin">Colin</a>
- </li>
- <li>
-   Fix: Don't assume output connection string has size MAX_CONNECT_STRING <a href="https://github.com/postgresql/psqlodbc/pull/106">PR #106</a>
-   Author: <a href="https://github.com/micahbaker">Micah Baker</a>
- </li>
- <li>
-   Security: Change memset to memset_s/SecureZeroMemory <a href="https://github.com/postgresql/psqlodbc/pull/105">PR #105</a>
-   Author: <a href="https://github.com/faviansamatha">Favian (Ian) Samatha</a>
- </li>
- <li>
-   Security: Replace unsafe string-to-number conversions <a href="https://github.com/postgresql/psqlodbc/pull/103">PR #103</a>
-   Author: <a href="https://github.com/faviansamatha">Favian (Ian) Samatha</a>
- </li>
- <li>
-   Build: Update main.yml to use wix version 6.0.0 <a href="https://github.com/postgresql/psqlodbc/pull/104">PR #104</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Fix: Fix possible use of uninitialized memory (Issue #99) <a href="https://github.com/postgresql/psqlodbc/pull/100">PR #100</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Fix: Change SpecialColumns to return correct information for unique indexes <a href="https://github.com/postgresql/psqlodbc/pull/97">PR #97</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   UI: Update the font and layouts of all dialogs to improve their look and feel <a href="https://github.com/postgresql/psqlodbc/pull/91">PR #91</a>
-   Author: <a href="https://github.com/keithw">Keith Wedinger</a>
- </li>
- <li>
-   Security: Update OPENSSL to 3.3.3
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Test: Test with just unique keys <a href="https://github.com/postgresql/psqlodbc/pull/87">PR #87</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Fix: Fix duplicate component codes <a href="https://github.com/postgresql/psqlodbc/pull/75">PR #75</a>
-   Author: <a href="https://github.com/christianu">Christian Ullrich</a>
- </li>
- <li>
-   Documentation: Add new test table for SQLSpecialColumns <a href="https://github.com/postgresql/psqlodbc/pull/85">PR #85</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Fix: Fix spelling of 'statement_deferred' <a href="https://github.com/postgresql/psqlodbc/pull/86">PR #86</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- <li>
-   Documentation: Fix release notes to properly reflect changes <a href="https://github.com/postgresql/psqlodbc/pull/81">PR #81</a>
-   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
- </li>
- </ol>/
-<ol type="1">
-  <h2><a id="17.00.0004">psqlODBC 17.00.0004 Release</a></h2>
-  Changes:<br />
-  <li>
-  Fix: Install the drivers with short file names <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/76">PR #76</a>
-  Author: <a href="https://github.com/">Christian Ullrich</a>
-  </li>
-  <li>
-
-  <h2><a id="17.00.0003">psqlODBC 17.00.0003 Release</a></h2>
-  Changes:<br />
-  <li>
-  Chore: Remove the NMAKE build system for installers <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/65">PR #65</a>
-  Author: <a href="https://github.com/">Christian Ullrich</a>
-  </li>
-  <li>
-  Use WiX 5 by @chrullrich <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/66">PR #66</a>
-  Author: <a href="https://github.com/">Christian Ullrich</a>
-  </li>
-  <li>
-  Fix:fix small memory leak in 'CC_initial_log' function by @iobnc <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/67">PR #67</a>
-  Author: <href="https://github.com/iobnc">iobnc</href>
-  <li>
-  Fix typo failing the Rebuild target by @chrullrich <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/68">PR #68</a>
-  Author: <a href="https://github.com/">Christian Ullrich</a>
-  </li>
-  <li>
-  Correct wrong string method calls by @chrullrich <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/69">PR #69</a>
-  Author: <a href="https://github.com/">Christian Ullrich</a>
-  </li>
-  <li>
-  Fix PG_ErrorInfo and ER_ReturnError when error message is larger than 65535 bytes  <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/70">PR #70</a>
-  Author: <a href="https://github.com/r33s3n6">r33s3n6</a>
-  </li>
-  <li> 
-    Release: Update version numbers <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/77">PR #77</a>
-    Author: <a href="https://github.com/davecramer">Dave Cramer</a>
-  </li>
-  Full Changelog: <a href="https://github.com/postgresql-interfaces/psqlodbc/compare/REL-17_00_0002...REL-17_00_0003"> REL-17_00_0002...REL-17_00_0003</a><br/>
-  </ol>
-  
-<ol type="1">
-  <h2><a id="17.00.0002">psqlODBC 17.00.0002 Release</a></h2>
-  Changes:<br />
-  <li>
-    Fix: Fix MSI error messages by in  <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/58">PR #58</a>
-    Author: <a href="https://github.com/">Christian Ullrich</a>
-  </li>
-  <li> 
-    Release: Update version numbers <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/52">PR #52</a>
-    Author: <a href="https://github.com/davecramer">Dave Cramer</a>
-  </li>
-  Full Changelog: <a href="https://github.com/postgresql-interfaces/psqlodbc/compare/REL-17_00_0001...REL-17_00_0002"> REL-17_00_0001...REL-17_00_0002</a><br/>
-  </ol>
-  
-<ol type="1">
-  <h2><a id="17.00.0001">psqlODBC 17.00.0001 Release</a></h2>
-  Changes:<br />
-  <li> 
-    Release: Use REL_17_STABLE by @davecramer in <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/53">PR #53</a>
-    Author: <a href="https://github.com/davecramer">Dave Cramer</a>
-  </li>
-  <li>
-    fix:Another place where refcnt in the COL_INFO object is unfortunately erased. <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/55">PR #55</a>
-    Author: <a href="https://github.com/progmachine"> Alexandr Kuznetsov</a>
-  </li>
-  Full Changelog: <a href="https://github.com/postgresql-interfaces/psqlodbc/compare/REL-17_00_0000...REL-17_00_0001"> REL-17_00_0000...REL-17_00_0001</a><br/>  
-  </ol>
-  
-<ol type="1">
 <h2><a id="17.00.0000">psqlODBC 17.00.0000 Release</a></h2>
 Changes:<br />
 <li> 
   Release: Update version numbers <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/52">PR #52</a>
   Author: <a href="https://github.com/davecramer">Dave Cramer</a>
 </li>
-Full Changelog: <a href="https://github.com/postgresql-interfaces/psqlodbc/compare/REL-17_00_0000...REL-16_00_0006"> REL-17_00_0000...REL-16_00_0006</a><br/>  
 </ol>
 <ol type="1">
   <h2><a id="16.00.0006">psqlODBC 16.00.0006 Release</a></h2>
@@ -228,8 +29,6 @@ Full Changelog: <a href="https://github.com/postgresql-interfaces/psqlodbc/compa
     Fixes <a href="https://github.com/postgresql-interfaces/psqlodbc/issues/47"> Issue #47</a>
     Author: <a href="https://github.com/progmachine">Alexandr Kuznetsov</a>
   </li>
-  Full Changelog: <a href="https://github.com/postgresql-interfaces/psqlodbc/compare/REL-16_00_0006...REL-16_00_0005"> REL-16_00_0006...REL-16_00_0005</a><br/>  
-  </ol>
   
 <h2><a id="16.00.0005">psqlODBC 16.00.0005 Release</a></h2>
 Changes:<br />
@@ -263,8 +62,6 @@ Changes:<br />
     Change: Build against PostgreSQL 17 Beta3 <a href="https://github.com/postgresql-interfaces/psqlodbc/pull/37">PR #37</a>
     Author: <a href="https://github.com/davecramer">Dave Cramer</a>
   </li>
-  Full Changelog: <a href="https://github.com/postgresql-interfaces/psqlodbc/compare/REL-16_00_0005...REL-16_00_0000"> REL-16_00_0005...REL-16_00_0000</a><br/>
-
 </ol>
 <h2><a id="16.00.0000">psqlODBC 16.00.0000 Release</a></h2>
 Changes:<br />

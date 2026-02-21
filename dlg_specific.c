@@ -23,8 +23,6 @@
 
 #include "pgapifunc.h"
 
-#include "secure_sscanf.h"
-
 #define	NULL_IF_NULL(a) ((a) ? ((const char *)(a)) : "(null)")
 CSTR	ENTRY_TEST = " @@@ ";
 
@@ -105,7 +103,6 @@ BOOL	setExtraOptions(ConnInfo *ci, const char *optstr, const char *format)
 {
 	UInt4	flag = 0, cnt;
 	char	dummy[2];
-	int	status = 0;
 
 	if (!format)
 	{
@@ -130,8 +127,7 @@ BOOL	setExtraOptions(ConnInfo *ci, const char *optstr, const char *format)
 			format = dec_format;
 	}
 
-	if (cnt = secure_sscanf(optstr, &status, format,
-				ARG_UINT(&flag), ARG_STR(&dummy, sizeof(dummy))), cnt < 1) // format error
+	if (cnt = sscanf(optstr, format, &flag, dummy), cnt < 1) // format error
 		return FALSE;
 	else if (cnt > 1) // format error
 		return FALSE;
@@ -305,22 +301,16 @@ makeConnectString(char *connect_string, const ConnInfo *ci, UWORD len)
 	char		xaOptStr[16];
 #endif
 	ssize_t		hlen, nlen, olen;
-	BOOL		abbrev;
+	/*BOOL		abbrev = (len <= 400);*/
+	BOOL		abbrev = (len < 1024) || 0 < ci->force_abbrev_connstr;
 	UInt4		flag;
-
-	if (len > MAX_CONNECT_STRING) {
-		len = MAX_CONNECT_STRING;
-	}
-
-	/*abbrev = (len <= 400);*/
-	abbrev = (len < 1024) || 0 < ci->force_abbrev_connstr;
 
 MYLOG(0, "%s row_versioning=%s\n", __FUNCTION__, ci->row_versioning);
 
 MYLOG(DETAIL_LOG_LEVEL, "force_abbrev=%d abbrev=%d\n", ci->force_abbrev_connstr, abbrev);
 	encode(ci->password, encoded_item, sizeof(encoded_item));
 	/* fundamental info */
-	nlen = len;
+	nlen = MAX_CONNECT_STRING;
 	olen = snprintf(connect_string, nlen, "%s=%s;DATABASE=%s;SERVER=%s;PORT=%s;UID=%s;PWD=%s",
 			got_dsn ? "DSN" : "DRIVER",
 			got_dsn ? ci->dsn : ci->drivername,
@@ -337,7 +327,7 @@ MYLOG(DETAIL_LOG_LEVEL, "force_abbrev=%d abbrev=%d\n", ci->force_abbrev_connstr,
 
 	/* extra info */
 	hlen = strlen(connect_string);
-	nlen = len - hlen;
+	nlen = MAX_CONNECT_STRING - hlen;
 MYLOG(DETAIL_LOG_LEVEL, "hlen=" FORMAT_SSIZE_T "\n", hlen);
 	if (!abbrev)
 	{
@@ -484,7 +474,7 @@ MYLOG(DETAIL_LOG_LEVEL, "hlen=" FORMAT_SSIZE_T "\n", hlen);
 				ABBR_SSLMODE "=%s", abbrev_sslmode(ci->sslmode, abbrevmode, sizeof(abbrevmode)));
 		}
 		hlen = strlen(connect_string);
-		nlen = len - hlen;
+		nlen = MAX_CONNECT_STRING - hlen;
 		olen = snprintf(&connect_string[hlen], nlen, ";"
 				"%s"		/* ABBR_CONNSETTINGS */
 				ABBR_FETCH "=%d;"
@@ -515,7 +505,7 @@ MYLOG(DETAIL_LOG_LEVEL, "hlen=" FORMAT_SSIZE_T "\n", hlen);
 		if (olen < nlen || ci->rollback_on_error >= 0)
 		{
 			hlen = strlen(connect_string);
-			nlen = len - hlen;
+			nlen = MAX_CONNECT_STRING - hlen;
 			/*
 			 * The PROTOCOL setting must be placed after CX flag
 			 * so that this option can override the CX setting.
@@ -535,7 +525,7 @@ MYLOG(DETAIL_LOG_LEVEL, "hlen=" FORMAT_SSIZE_T "\n", hlen);
 		if (0 != flag)
 		{
 			hlen = strlen(connect_string);
-			nlen = len - hlen;
+			nlen = MAX_CONNECT_STRING - hlen;
 			olen = snprintf(&connect_string[hlen], nlen, ";"
 				INI_EXTRAOPTIONS "=%x;",
 				flag);
@@ -555,20 +545,19 @@ unfoldCXAttribute(ConnInfo *ci, const char *value)
 {
 	int	count;
 	UInt4	flag;
-	int	status = 0;
 
 	if (strlen(value) < 2)
 	{
 		count = 3;
-		secure_sscanf(value, &status, "%x", ARG_UINT(&flag));
+		sscanf(value, "%x", &flag);
 	}
 	else
 	{
 		char	cnt[8];
 		memcpy(cnt, value, 2);
 		cnt[2] = '\0';
-		secure_sscanf(cnt, &status, "%x", ARG_UINT(&count));
-		secure_sscanf(value + 2, &status, "%x", ARG_UINT(&flag));
+		sscanf(cnt, "%x", &count);
+		sscanf(value + 2, "%x", &flag);
 	}
 	ci->allow_keyset = (char)((flag & BIT_UPDATABLECURSORS) != 0);
 	ci->lf_conversion = (char)((flag & BIT_LFCONVERSION) != 0);
@@ -664,7 +653,7 @@ copyConnAttributes(ConnInfo *ci, const char *attribute, const char *value)
 				*ptr = '\0';
 				/* ignore first part */
 			}
-			ci->rollback_on_error = pg_atoi(ptr + 1);
+			ci->rollback_on_error = atoi(ptr + 1);
 			MYLOG(0, "key='%s' value='%s' rollback_on_error=%d\n",
 				attribute, value, ci->rollback_on_error);
 			printed = TRUE;
@@ -692,31 +681,31 @@ copyConnAttributes(ConnInfo *ci, const char *attribute, const char *value)
 		ci->pqopt = decode_or_remove_braces(value);
 	}
 	else if (stricmp(attribute, INI_UPDATABLECURSORS) == 0 || stricmp(attribute, ABBR_UPDATABLECURSORS) == 0)
-		ci->allow_keyset = pg_atoi(value);
+		ci->allow_keyset = atoi(value);
 	else if (stricmp(attribute, INI_LFCONVERSION) == 0 || stricmp(attribute, ABBR_LFCONVERSION) == 0)
-		ci->lf_conversion = pg_atoi(value);
+		ci->lf_conversion = atoi(value);
 	else if (stricmp(attribute, INI_TRUEISMINUS1) == 0 || stricmp(attribute, ABBR_TRUEISMINUS1) == 0)
-		ci->true_is_minus1 = pg_atoi(value);
+		ci->true_is_minus1 = atoi(value);
 	else if (stricmp(attribute, INI_INT8AS) == 0)
-		ci->int8_as = pg_atoi(value);
+		ci->int8_as = atoi(value);
 	else if (stricmp(attribute, INI_NUMERIC_AS) == 0 || stricmp(attribute, ABBR_NUMERIC_AS) == 0)
-		ci->numeric_as = pg_atoi(value);
+		ci->numeric_as = atoi(value);
 	else if (stricmp(attribute, INI_BYTEAASLONGVARBINARY) == 0 || stricmp(attribute, ABBR_BYTEAASLONGVARBINARY) == 0)
-		ci->bytea_as_longvarbinary = pg_atoi(value);
+		ci->bytea_as_longvarbinary = atoi(value);
 	else if (stricmp(attribute, INI_USESERVERSIDEPREPARE) == 0 || stricmp(attribute, ABBR_USESERVERSIDEPREPARE) == 0)
-		ci->use_server_side_prepare = pg_atoi(value);
+		ci->use_server_side_prepare = atoi(value);
 	else if (stricmp(attribute, INI_LOWERCASEIDENTIFIER) == 0 || stricmp(attribute, ABBR_LOWERCASEIDENTIFIER) == 0)
-		ci->lower_case_identifier = pg_atoi(value);
+		ci->lower_case_identifier = atoi(value);
 	else if (stricmp(attribute, INI_KEEPALIVETIME) == 0 || stricmp(attribute, ABBR_KEEPALIVETIME) == 0)
-		ci->keepalive_idle = pg_atoi(value);
+		ci->keepalive_idle = atoi(value);
 	else if (stricmp(attribute, INI_KEEPALIVEINTERVAL) == 0 || stricmp(attribute, ABBR_KEEPALIVEINTERVAL) == 0)
-		ci->keepalive_interval = pg_atoi(value);
+		ci->keepalive_interval = atoi(value);
 	else if (stricmp(attribute, INI_BATCHSIZE) == 0 || stricmp(attribute, ABBR_BATCHSIZE) == 0)
-		ci->batch_size = pg_atoi(value);
+		ci->batch_size = atoi(value);
 	else if (stricmp(attribute, INI_OPTIONAL_ERRORS) == 0 || stricmp(attribute, ABBR_OPTIONAL_ERRORS) == 0)
-		ci->optional_errors = pg_atoi(value);
+		ci->optional_errors = atoi(value);
 	else if (stricmp(attribute, INI_IGNORETIMEOUT) == 0 || stricmp(attribute, ABBR_IGNORETIMEOUT) == 0)
-		ci->ignore_timeout = pg_atoi(value);
+		ci->ignore_timeout = atoi(value);
 	else if (stricmp(attribute, INI_SSLMODE) == 0 || stricmp(attribute, ABBR_SSLMODE) == 0)
 	{
 		switch (value[0])
@@ -756,22 +745,20 @@ copyConnAttributes(ConnInfo *ci, const char *attribute, const char *value)
 		unfoldCXAttribute(ci, value);
 #ifdef	_HANDLE_ENLIST_IN_DTC_
 	else if (stricmp(attribute, INI_XAOPT) == 0)
-		ci->xa_opt = pg_atoi(value);
+		ci->xa_opt = atoi(value);
 #endif /* _HANDLE_ENLIST_IN_DTC_ */
 	else if (stricmp(attribute, INI_EXTRAOPTIONS) == 0)
 	{
 		UInt4	val1 = 0, val2 = 0;
-		int		status = 0;
 
 		if ('+' == value[0])
 		{
-			secure_sscanf(value + 1, &status, "%x-%x",
-				ARG_UINT(&val1), ARG_UINT(&val2));
+			sscanf(value + 1, "%x-%x", &val1, &val2);
 			add_removeExtraOptions(ci, val1, val2);
 		}
 		else if ('-' == value[0])
 		{
-			secure_sscanf(value + 1, &status, "%x", ARG_UINT(&val2));
+			sscanf(value + 1, "%x", &val2);
 			add_removeExtraOptions(ci, 0, val2);
 		}
 		else
@@ -784,38 +771,38 @@ copyConnAttributes(ConnInfo *ci, const char *attribute, const char *value)
 	}
 
 	else if (stricmp(attribute, INI_FETCH) == 0 || stricmp(attribute, ABBR_FETCH) == 0)
-		ci->drivers.fetch_max = pg_atoi(value);
+		ci->drivers.fetch_max = atoi(value);
 	else if (stricmp(attribute, INI_DEBUG) == 0 || stricmp(attribute, ABBR_DEBUG) == 0)
-		ci->drivers.debug = pg_atoi(value);
+		ci->drivers.debug = atoi(value);
 	else if (stricmp(attribute, INI_COMMLOG) == 0 || stricmp(attribute, ABBR_COMMLOG) == 0)
-		ci->drivers.commlog = pg_atoi(value);
+		ci->drivers.commlog = atoi(value);
 	/*
 	 * else if (stricmp(attribute, INI_UNIQUEINDEX) == 0 ||
 	 * stricmp(attribute, "UIX") == 0) ci->drivers.unique_index =
-	 * pg_atoi(value);
+	 * atoi(value);
 	 */
 	else if (stricmp(attribute, INI_UNKNOWNSIZES) == 0 || stricmp(attribute, ABBR_UNKNOWNSIZES) == 0)
-		ci->drivers.unknown_sizes = pg_atoi(value);
+		ci->drivers.unknown_sizes = atoi(value);
 	else if (stricmp(attribute, INI_LIE) == 0)
-		ci->drivers.lie = pg_atoi(value);
+		ci->drivers.lie = atoi(value);
 	else if (stricmp(attribute, INI_PARSE) == 0 || stricmp(attribute, ABBR_PARSE) == 0)
-		ci->drivers.parse = pg_atoi(value);
+		ci->drivers.parse = atoi(value);
 	else if (stricmp(attribute, INI_USEDECLAREFETCH) == 0 || stricmp(attribute, ABBR_USEDECLAREFETCH) == 0)
-		ci->drivers.use_declarefetch = pg_atoi(value);
+		ci->drivers.use_declarefetch = atoi(value);
 	else if (stricmp(attribute, INI_MAXVARCHARSIZE) == 0 || stricmp(attribute, ABBR_MAXVARCHARSIZE) == 0)
-		ci->drivers.max_varchar_size = pg_atoi(value);
+		ci->drivers.max_varchar_size = atoi(value);
 	else if (stricmp(attribute, INI_MAXLONGVARCHARSIZE) == 0 || stricmp(attribute, ABBR_MAXLONGVARCHARSIZE) == 0)
-		ci->drivers.max_longvarchar_size = pg_atoi(value);
+		ci->drivers.max_longvarchar_size = atoi(value);
 	else if (stricmp(attribute, INI_TEXTASLONGVARCHAR) == 0 || stricmp(attribute, ABBR_TEXTASLONGVARCHAR) == 0)
-		ci->drivers.text_as_longvarchar = pg_atoi(value);
+		ci->drivers.text_as_longvarchar = atoi(value);
 	else if (stricmp(attribute, INI_UNKNOWNSASLONGVARCHAR) == 0 || stricmp(attribute, ABBR_UNKNOWNSASLONGVARCHAR) == 0)
-		ci->drivers.unknowns_as_longvarchar = pg_atoi(value);
+		ci->drivers.unknowns_as_longvarchar = atoi(value);
 	else if (stricmp(attribute, INI_BOOLSASCHAR) == 0 || stricmp(attribute, ABBR_BOOLSASCHAR) == 0)
-		ci->drivers.bools_as_char = pg_atoi(value);
+		ci->drivers.bools_as_char = atoi(value);
 	else if (stricmp(attribute, INI_EXTRASYSTABLEPREFIXES) == 0 || stricmp(attribute, ABBR_EXTRASYSTABLEPREFIXES) == 0)
 		STRCPY_FIXED(ci->drivers.extra_systable_prefixes, value);
 	else if (stricmp(attribute, INI_FETCHREFCURSORS) == 0 || stricmp(attribute, ABBR_FETCHREFCURSORS) == 0)
-		ci->fetch_refcursors = pg_atoi(value);
+		ci->fetch_refcursors = atoi(value);
 	else
 		found = FALSE;
 
@@ -989,9 +976,9 @@ MYLOG(0, "drivername=%s\n", drivername);
 
 	/* It's appropriate to handle debug and commlog here */
 	if (SQLGetPrivateProfileString(DSN, INI_DEBUG, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->drivers.debug = pg_atoi(temp);
+		ci->drivers.debug = atoi(temp);
 	if (SQLGetPrivateProfileString(DSN, INI_COMMLOG, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->drivers.commlog = pg_atoi(temp);
+		ci->drivers.commlog = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_READONLY, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
 		STRCPY_FIXED(ci->onlyread, temp);
@@ -1016,7 +1003,7 @@ MYLOG(0, "drivername=%s\n", drivername);
 		if (ptr = strchr(temp, '-'), NULL != ptr)
 		{
 			*ptr = '\0';
-			ci->rollback_on_error = pg_atoi(ptr + 1);
+			ci->rollback_on_error = atoi(ptr + 1);
 			MYLOG(0, "rollback_on_error=%d\n", ci->rollback_on_error);
 		}
 	}
@@ -1065,53 +1052,53 @@ MYLOG(0, "drivername=%s\n", drivername);
 		STRCPY_FIXED(ci->translation_option, temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_UPDATABLECURSORS, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->allow_keyset = pg_atoi(temp);
+		ci->allow_keyset = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_LFCONVERSION, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->lf_conversion = pg_atoi(temp);
+		ci->lf_conversion = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_TRUEISMINUS1, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->true_is_minus1 = pg_atoi(temp);
+		ci->true_is_minus1 = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_INT8AS, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->int8_as = pg_atoi(temp);
+		ci->int8_as = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, ABBR_NUMERIC_AS, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->numeric_as = pg_atoi(temp);
+		ci->numeric_as = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_OPTIONAL_ERRORS, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->optional_errors = pg_atoi(temp);
+		ci->optional_errors = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_BYTEAASLONGVARBINARY, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->bytea_as_longvarbinary = pg_atoi(temp);
+		ci->bytea_as_longvarbinary = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_USESERVERSIDEPREPARE, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->use_server_side_prepare = pg_atoi(temp);
+		ci->use_server_side_prepare = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_LOWERCASEIDENTIFIER, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->lower_case_identifier = pg_atoi(temp);
+		ci->lower_case_identifier = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_KEEPALIVETIME, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		if (0 == (ci->keepalive_idle = pg_atoi(temp)))
+		if (0 == (ci->keepalive_idle = atoi(temp)))
 			ci->keepalive_idle = -1;
 	if (SQLGetPrivateProfileString(DSN, INI_KEEPALIVEINTERVAL, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		if (0 == (ci->keepalive_interval = pg_atoi(temp)))
+		if (0 == (ci->keepalive_interval = atoi(temp)))
 			ci->keepalive_interval = -1;
 	if (SQLGetPrivateProfileString(DSN, INI_BATCHSIZE, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		if (0 == (ci->batch_size = pg_atoi(temp)))
+		if (0 == (ci->batch_size = atoi(temp)))
 			ci->batch_size = DEFAULT_BATCH_SIZE;
 	if (SQLGetPrivateProfileString(DSN, INI_IGNORETIMEOUT, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->ignore_timeout = pg_atoi(temp);
+		ci->ignore_timeout = atoi(temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_SSLMODE, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
 		STRCPY_FIXED(ci->sslmode, temp);
 
 	if (SQLGetPrivateProfileString(DSN, INI_FETCHREFCURSORS, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->fetch_refcursors = pg_atoi(temp);
+		ci->fetch_refcursors = atoi(temp);
 
 #ifdef	_HANDLE_ENLIST_IN_DTC_
 	if (SQLGetPrivateProfileString(DSN, INI_XAOPT, NULL_STRING, temp, sizeof(temp), ODBC_INI) > 0)
-		ci->xa_opt = pg_atoi(temp);
+		ci->xa_opt = atoi(temp);
 #endif /* _HANDLE_ENLIST_IN_DTC_ */
 
 	/* Force abbrev connstr or bde */
@@ -1119,9 +1106,8 @@ MYLOG(0, "drivername=%s\n", drivername);
 					temp, sizeof(temp), ODBC_INI) > 0)
 	{
 		UInt4	val = 0;
-		int 	status = 0;
 
-		secure_sscanf(temp, &status, "%x", ARG_UINT(&val));
+		sscanf(temp, "%x", &val);
 		replaceExtraOptions(ci, val, TRUE);
 		MYLOG(0, "force_abbrev=%d bde=%d cvt_null_date=%d\n", ci->force_abbrev_connstr, ci->bde_environment, ci->cvt_null_date_string);
 	}
@@ -1444,59 +1430,59 @@ get_Ci_Drivers(const char *section, const char *filename, GLOBAL_VALUES *comval)
 	if (SQLGetPrivateProfileString(section, INI_FETCH, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
 	{
-		if (pg_atoi(temp) > 0)
-			comval->fetch_max = pg_atoi(temp);
+		if (atoi(temp) > 0)
+			comval->fetch_max = atoi(temp);
 	}
 
 	/* Recognize Unique Index is stored in the driver section only */
 	if (SQLGetPrivateProfileString(section, INI_UNIQUEINDEX, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->unique_index = pg_atoi(temp);
+		comval->unique_index = atoi(temp);
 
 	/* Unknown Sizes is stored in the driver section only */
 	if (SQLGetPrivateProfileString(section, INI_UNKNOWNSIZES, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->unknown_sizes = pg_atoi(temp);
+		comval->unknown_sizes = atoi(temp);
 
 	/* Lie about supported functions? */
 	if (SQLGetPrivateProfileString(section, INI_LIE, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->lie = pg_atoi(temp);
+		comval->lie = atoi(temp);
 
 	/* Parse statements */
 	if (SQLGetPrivateProfileString(section, INI_PARSE, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->parse = pg_atoi(temp);
+		comval->parse = atoi(temp);
 
 	/* UseDeclareFetch is stored in the driver section only */
 	if (SQLGetPrivateProfileString(section, INI_USEDECLAREFETCH, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->use_declarefetch = pg_atoi(temp);
+		comval->use_declarefetch = atoi(temp);
 
 	/* Max Varchar Size */
 	if (SQLGetPrivateProfileString(section, INI_MAXVARCHARSIZE, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->max_varchar_size = pg_atoi(temp);
+		comval->max_varchar_size = atoi(temp);
 
 	/* Max TextField Size */
 	if (SQLGetPrivateProfileString(section, INI_MAXLONGVARCHARSIZE, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->max_longvarchar_size = pg_atoi(temp);
+		comval->max_longvarchar_size = atoi(temp);
 
 	/* Text As LongVarchar	*/
 	if (SQLGetPrivateProfileString(section, INI_TEXTASLONGVARCHAR, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->text_as_longvarchar = pg_atoi(temp);
+		comval->text_as_longvarchar = atoi(temp);
 
 	/* Unknowns As LongVarchar	*/
 	if (SQLGetPrivateProfileString(section, INI_UNKNOWNSASLONGVARCHAR, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->unknowns_as_longvarchar = pg_atoi(temp);
+		comval->unknowns_as_longvarchar = atoi(temp);
 
 	/* Bools As Char */
 	if (SQLGetPrivateProfileString(section, INI_BOOLSASCHAR, NULL_STRING,
 				temp, sizeof(temp), filename) > 0)
-		comval->bools_as_char = pg_atoi(temp);
+		comval->bools_as_char = atoi(temp);
 
 	/* Extra Systable prefixes */
 
@@ -1797,7 +1783,7 @@ CC_conninfo_init(ConnInfo *conninfo, UInt4 option)
 
 	if (0 != (CLEANUP_FOR_REUSE & option))
 		CC_conninfo_release(conninfo);
-	pg_memset(conninfo, 0, sizeof(ConnInfo));
+	memset(conninfo, 0, sizeof(ConnInfo));
 
 	conninfo->allow_keyset = -1;
 	conninfo->lf_conversion = -1;
@@ -1832,7 +1818,7 @@ CC_conninfo_init(ConnInfo *conninfo, UInt4 option)
 
 void	init_globals(GLOBAL_VALUES *glbv)
 {
-	pg_memset(glbv, 0, sizeof(*glbv));
+	memset(glbv, 0, sizeof(*glbv));
 	glbv->debug = -1;
 	glbv->commlog = -1;
 }
@@ -1842,7 +1828,7 @@ void	init_globals(GLOBAL_VALUES *glbv)
 
 void	copy_globals(GLOBAL_VALUES *to, const GLOBAL_VALUES *from)
 {
-	pg_memset(to, 0, sizeof(*to));
+	memset(to, 0, sizeof(*to));
 	/***
 	memcpy(to, from, sizeof(GLOBAL_VALUES));
 	SET_NAME_DIRECTLY(to->drivername, NULL);
@@ -1880,7 +1866,7 @@ void	finalize_globals(GLOBAL_VALUES *glbv)
 void
 CC_copy_conninfo(ConnInfo *ci, const ConnInfo *sci)
 {
-	pg_memset(ci, 0,sizeof(ConnInfo));
+	memset(ci, 0,sizeof(ConnInfo));
 
 	CORR_STRCPY(dsn);
 	CORR_STRCPY(desc);

@@ -46,6 +46,8 @@ function Find-MSBuild
 			$VisualStudioVersion = "16.0"
 		} elseif ((Find-VSDir 17) -ne "") { #VC 17 is installed
 			$VisualStudioVersion = "17.0"
+		} elseif ((Find-VSDir 18) -ne "") { #VC 18 is installed
+			$VisualStudioVersion = "18.0"
 		} elseif ("${env:VS140COMNTOOLS}" -ne "") { # VC14 is installed
 			$VisualStudioVersion = "14.0"
 		} elseif ("${env:VS120COMNTOOLS}" -ne "") { # VC12 is installed
@@ -70,6 +72,7 @@ function Find-MSBuild
 	 "15.0"	{ $toolsout = 15 }
 	 "16.0"	{ $toolsout = 16 }
 	 "17.0" { $toolsout = 17 }
+	 "18.0" { $toolsout = 18 }
 	 default { throw "Selected Visual Studio is Version ${VisualStudioVersion}. Please use VC10 or later"}
 	}
 #
@@ -154,6 +157,7 @@ function Find-MSBuild
 		 "15.0"	{$Toolsetv="v141_xp"}
 		 "16.0"	{$Toolsetv="v142"}
 		 "17.0" {$Toolsetv="v143"}
+		 "18.0" {$Toolsetv="v145"}
 		}
 	}
 #	avoid a bug of Windows7.1SDK PlatformToolset
@@ -404,7 +408,7 @@ function find_vs_installation
 	return $vsdir
 }
 
-$vsarray = @{VC15 = "2017"; VC16 = "2019"; VC17 = "2022"}
+$vsarray = @{VC15 = "2017"; VC16 = "2019"; VC17 = "2022"; VC18 = "2026"}
 #	find VS dir for VC15 ~ VC??
 function find_default_msbuild_path
 {

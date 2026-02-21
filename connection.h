@@ -68,7 +68,7 @@ typedef enum
 #define CONN_UNABLE_TO_LOAD_DLL						212
 #define CONN_ILLEGAL_TRANSACT_STATE					213
 #define CONN_VALUE_OUT_OF_RANGE						214
-#define CONN_INVALID_INFO_TYPE						215
+
 #define CONN_OPTION_NOT_FOR_THE_DRIVER					216
 #define CONN_EXEC_ERROR							217
 
@@ -222,11 +222,11 @@ do { \
  *		  It must be a decimal constant of the form %d.%d .
  */
 #define PG_VERSION_GT(conn, ver) \
- (SERVER_VERSION_GT(conn, (int) ver, pg_atoi(STRING_AFTER_DOT(ver))))
+ (SERVER_VERSION_GT(conn, (int) ver, atoi(STRING_AFTER_DOT(ver))))
 #define PG_VERSION_GE(conn, ver) \
- (SERVER_VERSION_GE(conn, (int) ver, pg_atoi(STRING_AFTER_DOT(ver))))
+ (SERVER_VERSION_GE(conn, (int) ver, atoi(STRING_AFTER_DOT(ver))))
 #define PG_VERSION_EQ(conn, ver) \
- (SERVER_VERSION_EQ(conn, (int) ver, pg_atoi(STRING_AFTER_DOT(ver))))
+ (SERVER_VERSION_EQ(conn, (int) ver, atoi(STRING_AFTER_DOT(ver))))
 #define PG_VERSION_LE(conn, ver) (! PG_VERSION_GT(conn, ver))
 #define PG_VERSION_LT(conn, ver) (! PG_VERSION_GE(conn, ver))
 
@@ -256,7 +256,7 @@ enum {
 	coli->refcnt = 0; \
 	coli->acc_time = 0; \
 }
-#define col_info_initialize(coli) (pg_memset(coli, 0, sizeof(COL_INFO)))
+#define col_info_initialize(coli) (memset(coli, 0, sizeof(COL_INFO)))
 
  /* Translation DLL entry points */
 #ifdef WIN32

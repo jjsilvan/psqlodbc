@@ -63,7 +63,7 @@ Param(
 [ValidateSet("Win32", "x64", "both")]
 [string]$Platform="both",
 [string]$Toolset,
-[ValidateSet("", "4.0", "12.0", "14.0")]
+[ValidateSet("", "4.0", "12.0", "14.0", "18.0")]
 [string]$MSToolsVersion,
 [ValidateSet("Debug", "Release")]
 [String]$Configuration="Release",

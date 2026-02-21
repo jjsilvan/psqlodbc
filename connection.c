@@ -305,7 +305,7 @@ CC_initialize(ConnectionClass *rv, BOOL lockinit)
 	clear_size = sizeof(ConnectionClass);
 #endif /* WIN_MULTITHREAD_SUPPORT */
 
-	pg_memset(rv, 0, clear_size);
+	memset(rv, 0, clear_size);
 	rv->status = CONN_NOT_CONNECTED;
 	rv->transact_status = CONN_IN_AUTOCOMMIT;		/* autocommit by default */
 	rv->unnamed_prepared_stmt = NULL;
@@ -313,13 +313,13 @@ CC_initialize(ConnectionClass *rv, BOOL lockinit)
 	rv->stmts = (StatementClass **) malloc(sizeof(StatementClass *) * STMT_INCREMENT);
 	if (!rv->stmts)
 		goto cleanup;
-	pg_memset(rv->stmts, 0, sizeof(StatementClass *) * STMT_INCREMENT);
+	memset(rv->stmts, 0, sizeof(StatementClass *) * STMT_INCREMENT);
 
 	rv->num_stmts = STMT_INCREMENT;
 	rv->descs = (DescriptorClass **) malloc(sizeof(DescriptorClass *) * STMT_INCREMENT);
 	if (!rv->descs)
 		goto cleanup;
-	pg_memset(rv->descs, 0, sizeof(DescriptorClass *) * STMT_INCREMENT);
+	memset(rv->descs, 0, sizeof(DescriptorClass *) * STMT_INCREMENT);
 
 	rv->num_descs = STMT_INCREMENT;
 
@@ -778,7 +778,7 @@ CC_set_translation(ConnectionClass *self)
 	if (self->connInfo.translation_dll[0] == 0)
 		return TRUE;
 
-	self->translation_option = pg_atoi(self->connInfo.translation_option);
+	self->translation_option = atoi(self->connInfo.translation_option);
 	self->translation_handle = LoadLibrary(self->connInfo.translation_dll);
 
 	if (self->translation_handle == NULL)
@@ -1010,7 +1010,7 @@ static char CC_initial_log(ConnectionClass *self, const char *func)
 	const ConnInfo	*ci = &self->connInfo;
 	char	*encoding, vermsg[128];
 
-	snprintf(vermsg, sizeof(vermsg), "Driver Version='%s'"
+	snprintf(vermsg, sizeof(vermsg), "Driver Version='%s,%s'"
 #ifdef	WIN32
 		" linking %d"
 #ifdef	_MT
@@ -1028,7 +1028,7 @@ static char CC_initial_log(ConnectionClass *self, const char *func)
 #endif /* DEBUG */
 		" library"
 #endif /* WIN32 */
-		"\n", POSTGRESDRIVERVERSION
+		"\n", POSTGRESDRIVERVERSION, __DATE__
 #ifdef	_MSC_VER
 		, _MSC_VER
 #endif /* _MSC_VER */
@@ -1056,8 +1056,6 @@ static char CC_initial_log(ConnectionClass *self, const char *func)
 			ci->drivers.extra_systable_prefixes,
 			PRINT_NAME(ci->conn_settings),
 			encoding ? encoding : "");
-		if (encoding)
-			free(encoding);
 	}
 	if (self->status == CONN_DOWN)
 	{
@@ -1094,29 +1092,7 @@ LIBPQ_CC_connect(ConnectionClass *self, char *salt_para)
 
 	if (ret = LIBPQ_connect(self), ret <= 0)
 		return ret;
-
-	/* Check current DateStyle first */
-	res = CC_send_query(self, "SHOW DateStyle;", NULL, READ_ONLY_QUERY, NULL);
-	if (QR_command_maybe_successful(res))
-	{
-
-		if (res->command && (stricmp(res->command, "SHOW") == 0) 
-			&& (strcmp(QR_get_fieldname(res, 0), "DateStyle") == 0)){
-			const char * datestyle = QR_get_value_backend_text(res, 0, 0);
-			/* Only set DateStyle if it's not already ISO */
-			if (datestyle && (strncmp(datestyle, "ISO", 3) != 0))
-			{
-				QR_Destructor(res);
-				res = CC_send_query(self, "SET DateStyle = 'ISO';" ISOLATION_SHOW_QUERY, NULL, READ_ONLY_QUERY, NULL);
-			}
-			else
-			{
-				QR_Destructor(res);
-				res = CC_send_query(self, ISOLATION_SHOW_QUERY, NULL, READ_ONLY_QUERY, NULL);
-			}
-		}
-	}
-
+	res = CC_send_query(self, "SET DateStyle = 'ISO';SET extra_float_digits = 2;" ISOLATION_SHOW_QUERY, NULL, READ_ONLY_QUERY, NULL);
 	if (QR_command_maybe_successful(res))
 	{
 		handle_show_results(res);
@@ -1272,7 +1248,7 @@ CC_add_statement(ConnectionClass *self, StatementClass *stmt)
 		else
 		{
 			self->stmts = newstmts;
-			pg_memset(&self->stmts[self->num_stmts], 0, sizeof(StatementClass *) * STMT_INCREMENT);
+			memset(&self->stmts[self->num_stmts], 0, sizeof(StatementClass *) * STMT_INCREMENT);
 
 			stmt->hdbc = self;
 			self->stmts[self->num_stmts] = stmt;
@@ -1717,19 +1693,6 @@ CC_from_PGresult(QResultClass *res, StatementClass *stmt,
 	return success;
 }
 
-/**
- * @param[in] *self
- * @param[in] rollback_type 
- * 	PER_STATEMENT_ROLLBACK
- * 		
- * 	PER_QUERY_ROLLBACK
- * 		sends ROLLBACK TO _per_query_svp_; RELEASE _per_query_svp_
- * @param[in] ignore_abort 
- * @return
- * 	1: success
- * 	0: failure
- * 
- */
 int
 CC_internal_rollback(ConnectionClass *self, int rollback_type, BOOL ignore_abort)
 {
@@ -2049,9 +2012,9 @@ CC_send_query_append(ConnectionClass *self, const char *query, QueryInfo *qi, UD
 				}
 				/*
 				 * There are 2 risks to RELEASE an internal savepoint.
-				 * One is to RELEASE the savepoint invalidated
+				 * One is to RELEASE the savepoint invalitated
 				 * due to manually issued ROLLBACK or RELEASE.
-				 * Another is to invalidate manual SAVEPOINTs unexpectedly
+				 * Another is to invalitate manual SAVEPOINTs unexpectedly
 				 * by RELEASing the internal savepoint.
 				 */
 				else if (strnicmp(cmdbuffer, svpcmd, strlen(svpcmd)) == 0)
@@ -2104,7 +2067,7 @@ MYLOG(DETAIL_LOG_LEVEL, "Discarded a RELEASE result\n");
 				{
 					ptr = strrchr(cmdbuffer, ' ');
 					if (ptr)
-						res->recent_processed_row_count = pg_atoi(ptr + 1);
+						res->recent_processed_row_count = atoi(ptr + 1);
 					else
 						res->recent_processed_row_count = -1;
 					if (self->current_schema_valid &&
@@ -2797,7 +2760,7 @@ LIBPQ_connect(ConnectionClass *self)
 	int			pversion;
 	const	char	*opts[PROTOCOL3_OPTS_MAX], *vals[PROTOCOL3_OPTS_MAX];
 	PQconninfoOption	*conninfoOption = NULL, *pqopt;
-	int			cnt;
+	int			i, cnt;
 	char		login_timeout_str[20];
 	char		keepalive_idle_str[20];
 	char		keepalive_interval_str[20];
@@ -2883,7 +2846,8 @@ LIBPQ_connect(ConnectionClass *self)
 	{
 		const char *keyword, *val;
 		int j;
-		for (pqopt = conninfoOption; (keyword = pqopt->keyword) != NULL; pqopt++)
+
+		for (i = 0, pqopt = conninfoOption; (keyword = pqopt->keyword) != NULL; i++, pqopt++)
 		{
 			if ((val = pqopt->val) != NULL)
 			{

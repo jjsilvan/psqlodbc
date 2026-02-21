@@ -170,8 +170,8 @@ HDBC	XAConnection::ActivateConnection(void)
 		SQLFreeHandle(SQL_HANDLE_DBC, xaconn);
 		return NULL;
 	}
-	sqlState.clear();
-	errMsg.clear();
+	sqlState.empty();
+	errMsg.empty();
 	ret = SQLDriverConnect(xaconn, NULL,
 		 (SQLCHAR *) (dsnstr + ";Username=postgres;Password=postgres;sslmode=allow").c_str(), SQL_NTS, NULL, SQL_NULL_DATA, NULL, SQL_DRIVER_COMPLETE);
 	if (SQL_SUCCEEDED(ret))
@@ -232,7 +232,7 @@ INT_PTR FAR WINAPI GetMsdtclog()
 	char	temp[16];
 
         SQLGetPrivateProfileString(DBMSNAME, KEY_NAME, "", temp, sizeof(temp), ODBCINST_INI);
-	dtclog = (int) strtol(temp, NULL, 10);
+	dtclog = atoi(temp);
 	return dtclog;
 }
 INT_PTR FAR WINAPI SetMsdtclog(int dtclog)
@@ -520,10 +520,10 @@ void XAConnection::parse_xa_info()
 		}
 
 		if (0 == _stricmp(keyword, KEYWORD_DTC_CHECK))
-			immediateConnection = (0 != (int) strtol(value, NULL, 10));
+			immediateConnection = (0 != atoi(value)); 
 		else if (0 == _stricmp(keyword, KEYWORD_DEBUG) ||
 			 0 == _stricmp(keyword, KEYWORD_ABDEBUG))
-			debugv = (int) strtol(value, NULL, 10);
+			debugv = atoi(value); 
 		else
 		{
 			if (keyhasbr)

@@ -33,16 +33,7 @@
 #include "lobj.h"
 #include "pgapifunc.h"
 
-#include "secure_sscanf.h"
-
-/** 
- * @brief Perform a Prepare on the SQL statement 
- * 
- * @param hstmt		Handle to the statement
- * @param szSqlStr	SQL statement
- * @param cbSqlStr	Length of the SQL statement
- * 
- */
+/*		Perform a Prepare on the SQL statement */
 RETCODE		SQL_API
 PGAPI_Prepare(HSTMT hstmt,
 			  const SQLCHAR * szSqlStr,
@@ -142,14 +133,7 @@ MYLOG(DETAIL_LOG_LEVEL, "leaving %d\n", retval);
 }
 
 
-/** 
- * 	Performs the equivalent of SQLPrepare, followed by SQLExecute. 
- *	@param hstmt		Handle to the statement
- *	@param szSqlStr		SQL statement
- *	@param cbSqlStr	Length of the SQL statement
- *	@param flag			Flags to control the execution of the statement
- * 
-*/
+/*		Performs the equivalent of SQLPrepare, followed by SQLExecute. */
 RETCODE		SQL_API
 PGAPI_ExecDirect(HSTMT hstmt,
 				 const SQLCHAR * szSqlStr,
@@ -409,15 +393,6 @@ int HowToPrepareBeforeExec(StatementClass *stmt, BOOL checkOnly)
 	return nCallParse;
 }
 
-/**
- * 	Generate a name for the SVP (Savepoint) for the given
- * 	connection.
- *
- * 	@param	conn	The connection.
- * 	@param	wrk	The buffer to store the name in.
- * 	@param	wrksize	The size of the buffer.
- * 	@return		The name of the Savepoint.
- */
 static
 const char *GetSvpName(const ConnectionClass *conn, char *wrk, int wrksize)
 {
@@ -429,8 +404,8 @@ const char *GetSvpName(const ConnectionClass *conn, char *wrk, int wrksize)
  *	The execution after all parameters were resolved.
  */
 
-#define INVALID_EXPBUFFER	PQExpBufferDataBroken(stmt->stmt_deferred)
-#define VALID_EXPBUFFER	(!PQExpBufferDataBroken(stmt->stmt_deferred))
+#define INVALID_EXPBUFFER	PQExpBufferDataBroken(stmt->stmt_deffered)
+#define VALID_EXPBUFFER	(!PQExpBufferDataBroken(stmt->stmt_deffered))
 
 static
 void param_status_batch_update(IPDFields *ipdopts, RETCODE retval, SQLLEN target_row, int count_of_deffered)
@@ -463,7 +438,7 @@ RETCODE	Exec_with_parameters_resolved(StatementClass *stmt, EXEC_TYPE exec_type,
 	BOOL		prepare_before_exec = FALSE;
 	char *stmt_with_params;
 	SQLLEN		status_row = stmt->exec_current_row;
-	int		count_of_deferred;
+	int		count_of_deffered;
 
 	*exec_end = FALSE;
 	conn = SC_get_conn(stmt);
@@ -490,7 +465,7 @@ MYLOG(DETAIL_LOG_LEVEL, "prepare_before_exec=%d srv=%d\n", prepare_before_exec, 
 			stmt_with_params = stmt->stmt_with_params = NULL;
 		}
 		if (INVALID_EXPBUFFER ||
-		    !stmt->stmt_deferred.data[0])
+		    !stmt->stmt_deffered.data[0])
 			RETURN(SQL_SUCCESS);
 	}
 	else
@@ -537,7 +512,7 @@ MYLOG(0, "about to begin SC_execute exec_type=%d\n", exec_type);
 			}
 		}
 	}
-	count_of_deferred = stmt->count_of_deffered;
+	count_of_deffered = stmt->count_of_deffered;
 	if (DIRECT_EXEC == exec_type)
 	{
 		retval = SC_execute(stmt);
@@ -548,7 +523,7 @@ MYLOG(0, "about to begin SC_execute exec_type=%d\n", exec_type);
 		 stmt->count_of_deffered + 1 < stmt->batch_size)
 	{
 		if (INVALID_EXPBUFFER)
-			initPQExpBuffer(&stmt->stmt_deferred);
+			initPQExpBuffer(&stmt->stmt_deffered);
 		if (INVALID_EXPBUFFER)
 		{
 			retval = SQL_ERROR;
@@ -558,10 +533,10 @@ MYLOG(0, "about to begin SC_execute exec_type=%d\n", exec_type);
 		{
 			if (NULL != stmt_with_params)
 			{
-				if (stmt->stmt_deferred.data[0])
-					appendPQExpBuffer(&stmt->stmt_deferred, ";%s", stmt_with_params);
+				if (stmt->stmt_deffered.data[0])
+					appendPQExpBuffer(&stmt->stmt_deffered, ";%s", stmt_with_params);
 				else
-					printfPQExpBuffer(&stmt->stmt_deferred, "%s", stmt_with_params);
+					printfPQExpBuffer(&stmt->stmt_deffered, "%s", stmt_with_params);
 			}
 			if (NULL != ipdopts->param_status_ptr)
 				ipdopts->param_status_ptr[stmt->exec_current_row] = SQL_PARAM_SUCCESS; // set without exec
@@ -575,19 +550,19 @@ MYLOG(0, "about to begin SC_execute exec_type=%d\n", exec_type);
 		if (VALID_EXPBUFFER)
 		{
 			if (NULL != stmt_with_params)
-				appendPQExpBuffer(&stmt->stmt_deferred, ";%s", stmt_with_params);
-			stmt->stmt_with_params = stmt->stmt_deferred.data;
+				appendPQExpBuffer(&stmt->stmt_deffered, ";%s", stmt_with_params);
+			stmt->stmt_with_params = stmt->stmt_deffered.data;
 		}
 		retval = SC_execute(stmt);
 		stmt->stmt_with_params = stmt_with_params;
 		stmt->count_of_deffered = 0;
 		if (VALID_EXPBUFFER)
-			resetPQExpBuffer(&stmt->stmt_deferred);
+			resetPQExpBuffer(&stmt->stmt_deffered);
 	}
 	if (retval == SQL_ERROR)
 	{
-MYLOG(0, "count_of_deferred=%d\n", count_of_deferred);
-		param_status_batch_update(ipdopts, SQL_PARAM_ERROR, stmt->exec_current_row, count_of_deferred);
+MYLOG(0, "count_of_deffered=%d\n", count_of_deffered);
+		param_status_batch_update(ipdopts, SQL_PARAM_ERROR, stmt->exec_current_row, count_of_deffered);
 		stmt->exec_current_row = -1;
 		*exec_end = TRUE;
 		RETURN(retval)
@@ -618,11 +593,11 @@ MYLOG(0, "count_of_deferred=%d\n", count_of_deferred);
 				ipdopts->param_status_ptr[status_row] = SQL_PARAM_SUCCESS;
 				break;
 			case SQL_SUCCESS_WITH_INFO:
-MYLOG(0, "count_of_deffered=%d has_notice=%d\n", count_of_deferred, stmt->has_notice);
-				param_status_batch_update(ipdopts, (count_of_deferred > 0 && !stmt->has_notice) ? SQL_PARAM_SUCCESS : SQL_PARAM_SUCCESS_WITH_INFO, status_row, count_of_deferred);
+MYLOG(0, "count_of_deffered=%d has_notice=%d\n", count_of_deffered, stmt->has_notice);
+				param_status_batch_update(ipdopts, (count_of_deffered > 0 && !stmt->has_notice) ? SQL_PARAM_SUCCESS : SQL_PARAM_SUCCESS_WITH_INFO, status_row, count_of_deffered);
 				break;
 			default:
-				param_status_batch_update(ipdopts, SQL_PARAM_ERROR, status_row, count_of_deferred);
+				param_status_batch_update(ipdopts, SQL_PARAM_ERROR, status_row, count_of_deffered);
 				break;
 		}
 	}
@@ -645,12 +620,11 @@ MYLOG(0, "count_of_deffered=%d has_notice=%d\n", count_of_deferred, stmt->has_no
 		    NULL != env &&
 		    EN_is_odbc3(env))
 		{
-			int	count;
-			int	status = 0;
+			int     count;
 
-			if (secure_sscanf(cmd, &status, "UPDATE %d", ARG_INT(&count)) == 1)
+			if (sscanf(cmd , "UPDATE %d", &count) == 1)
 				;
-			else if (secure_sscanf(cmd, &status, "DELETE %d", ARG_INT(&count)) == 1)
+			else if (sscanf(cmd , "DELETE %d", &count) == 1)
 				;
 			else
 				count = -1;
@@ -677,12 +651,6 @@ cleanup:
 	return retval;
 }
 
-/**
- * @param[in] stmt 
- * @return
- *		1: transaction rollback
- *		2: statement rollback
- */
 int
 StartRollbackState(StatementClass *stmt)
 {
@@ -697,7 +665,6 @@ MYLOG(DETAIL_LOG_LEVEL, "entering %p->external=%d\n", stmt, stmt->external);
 
 	if (!ci || ci->rollback_on_error < 0) /* default */
 	{
-		/* server version greater than or equal to 8.0 ?*/
 		if (conn && PG_VERSION_GE(conn, 8.0))
 			ret = 2; /* statement rollback */
 		else
@@ -722,20 +689,6 @@ MYLOG(DETAIL_LOG_LEVEL, "entering %p->external=%d\n", stmt, stmt->external);
 	return	ret;
 }
 
-/**
- * @param[in] *conn
- * @param[in] type
- * 	INTERNAL_SAVEPOINT_OPERATION or INTERNAL_ROLLBACK_OPERATION
- * 	if type is INTERNAL_SAVEPOINT_OPERATION and conn->internal_svp is FALSE
- * 	then the command is "SAVEPOINT" instead of "RELEASE SAVEPOINT"
- *  if type is INTERNAL_ROLLBACK_OPERATION and conn->internal_svp is FALSE
- * 	then the command is "ROLLBACK" instead of "ROLLBACK TO SAVEPOINT"
- * @param[out] *cmd
- * 	buffer to hold command to be sent
- * @param[in] buflen
- * @return less than zero if an error or number of characters in command
- * 
- */
 int
 GenerateSvpCommand(ConnectionClass *conn, int type, char *cmd, int buflen)
 {
@@ -837,14 +790,6 @@ MYLOG(DETAIL_LOG_LEVEL, "leaving %p->accessed=%d\n", conn, CC_accessed_db(conn))
 	return ret;
 }
 
-
-/**
- *  @brief Discards the statement savepoint
- *  @param stmt 
- *  @param ret 
- *  @param errorOnly 
- *  @return ret
-*/
 RETCODE
 DiscardStatementSvp(StatementClass *stmt, RETCODE ret, BOOL errorOnly)
 {
@@ -975,13 +920,7 @@ SC_setInsertedTable(StatementClass *stmt, RETCODE retval)
 		NULL_THE_NAME(conn->schemaIns);
 }
 
-/** 
- * @brief Execute a prepared SQL statement 
- * @param hstmt
- * @param flag
- * @return SQL_SUCCESS if successful
- *  
-*/
+/*	Execute a prepared SQL statement */
 RETCODE		SQL_API
 PGAPI_Execute(HSTMT hstmt, UWORD flag)
 {

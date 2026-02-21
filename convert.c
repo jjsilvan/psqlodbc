@@ -47,8 +47,6 @@
 #include "catfunc.h"
 #include "pgapifunc.h"
 
-#include "secure_sscanf.h"
-
 CSTR	NAN_STRING = "NaN";
 CSTR	INFINITY_STRING = "Infinity";
 CSTR	MINFINITY_STRING = "-Infinity";
@@ -237,7 +235,7 @@ static SQLLEN pg_bin2whex(const char *src, SQLWCHAR *dst, SQLLEN length);
 #elif	defined(HAVE_STRTOUL)
 #define	ATOI32U(val)	strtoul(val, NULL, 10)
 #else /* HAVE_STRTOUL */
-#define	ATOI32U(val)	strtol(val, NULL, 10)
+#define	ATOI32U	atol
 #endif /* WIN32 */
 
 /*
@@ -257,16 +255,14 @@ static SQLLEN pg_bin2whex(const char *src, SQLWCHAR *dst, SQLLEN length);
 #else
 static ODBCINT64 ATOI64(const char *val)
 {
-	int status;
 	ODBCINT64 ll;
-	secure_sscanf(val, &status, "%lld", ARG_LLONG(&ll));
+	sscanf(val, "%lld", &ll);
 	return ll;
 }
 static unsigned ODBCINT64 ATOI64U(const char *val)
 {
-	int status;
 	unsigned ODBCINT64 ll;
-	secure_sscanf(val, &status, "%llu", ARG_ULLONG(&ll));
+	sscanf(val, "%llu", &ll);
 	return ll;
 }
 #endif /* HAVE_STRTOLL */
@@ -287,7 +283,6 @@ timestamp2stime(const char *str, SIMPLE_TIME *st, BOOL *bZone, int *zone)
 	char		rest[64], bc[16],
 			   *ptr;
 	int			scnt,
-				status,
 				i;
 	int			y, m, d, hh, mm, ss;
 #ifdef	TIMEZONE_GLOBAL
@@ -301,10 +296,7 @@ timestamp2stime(const char *str, SIMPLE_TIME *st, BOOL *bZone, int *zone)
 	st->infinity = 0;
 	rest[0] = '\0';
 	bc[0] = '\0';
-	if ((scnt = secure_sscanf(str, &status, "%4d-%2d-%2d %2d:%2d:%2d%31s %15s",
-					ARG_INT(&y), ARG_INT(&m), ARG_INT(&d),
-					ARG_INT(&hh), ARG_INT(&mm), ARG_INT(&ss),
-					ARG_STR(&rest, sizeof(rest)), ARG_STR(&bc, sizeof(bc)))) < 6)
+	if ((scnt = sscanf(str, "%4d-%2d-%2d %2d:%2d:%2d%31s %15s", &y, &m, &d, &hh, &mm, &ss, rest, bc)) < 6)
 	{
 		if (scnt == 3) /* date */
 		{
@@ -316,9 +308,7 @@ timestamp2stime(const char *str, SIMPLE_TIME *st, BOOL *bZone, int *zone)
 			st->ss = 0;
 			return TRUE;
 		}
-		if ((scnt = secure_sscanf(str, &status, "%2d:%2d:%2d%31s %15s",
-						ARG_INT(&hh), ARG_INT(&mm), ARG_INT(&ss),
-						ARG_STR(&rest, sizeof(rest)), ARG_STR(&bc, sizeof(bc)))) < 3)
+		if ((scnt = sscanf(str, "%2d:%2d:%2d%31s %15s", &hh, &mm, &ss, rest, bc)) < 3)
 			return FALSE;
 		else
 		{
@@ -344,23 +334,23 @@ timestamp2stime(const char *str, SIMPLE_TIME *st, BOOL *bZone, int *zone)
 	{
 		case '+':
 			*bZone = TRUE;
-			*zone = pg_atoi(&rest[1]);
+			*zone = atoi(&rest[1]);
 			break;
 		case '-':
 			*bZone = TRUE;
-			*zone = -pg_atoi(&rest[1]);
+			*zone = -atoi(&rest[1]);
 			break;
 		case '.':
 			if ((ptr = strchr(rest, '+')) != NULL)
 			{
 				*bZone = TRUE;
-				*zone = pg_atoi(&ptr[1]);
+				*zone = atoi(&ptr[1]);
 				*ptr = '\0';
 			}
 			else if ((ptr = strchr(rest, '-')) != NULL)
 			{
 				*bZone = TRUE;
-				*zone = -pg_atoi(&ptr[1]);
+				*zone = -atoi(&ptr[1]);
 				*ptr = '\0';
 			}
 			for (i = 1; i < 10; i++)
@@ -371,7 +361,7 @@ timestamp2stime(const char *str, SIMPLE_TIME *st, BOOL *bZone, int *zone)
 			for (; i < 10; i++)
 				rest[i] = '0';
 			rest[i] = '\0';
-			st->fr = pg_atoi(&rest[1]);
+			st->fr = atoi(&rest[1]);
 			break;
 		case 'B':
 			if (stricmp(rest, "BC") == 0)
@@ -573,7 +563,7 @@ static int getPrecisionPart(int precision, const char * precPart)
 	memcpy(fraction, precPart, cpys);
 	fraction[precision] = '\0';
 
-	return pg_atoi(fraction);
+	return atoi(fraction);
 }
 
 static BOOL
@@ -583,11 +573,9 @@ interval2istruct(SQLSMALLINT ctype, int precision, const char *str, SQL_INTERVAL
 	int	scnt, years, mons, days, hours, minutes, seconds;
 	BOOL	sign;
 	SQLINTERVAL	itype = interval2itype(ctype);
-	int 		status = 0;
 
-	pg_memset(st, 0, sizeof(SQL_INTERVAL_STRUCT));
-	if ((scnt = secure_sscanf(str, &status, "%d-%d",
-					ARG_INT(&years), ARG_INT(&mons))) >=2)
+	memset(st, 0, sizeof(SQL_INTERVAL_STRUCT));
+	if ((scnt = sscanf(str, "%d-%d", &years, &mons)) >=2)
 	{
 		if (SQL_IS_YEAR_TO_MONTH == itype)
 		{
@@ -600,11 +588,7 @@ interval2istruct(SQLSMALLINT ctype, int precision, const char *str, SQL_INTERVAL
 		}
 		return FALSE;
 	}
-	else if (scnt = secure_sscanf(str, &status, "%d %02d:%02d:%02d.%09s",
-						ARG_INT(&days), ARG_INT(&hours),
-						ARG_INT(&minutes), ARG_INT(&seconds),
-						ARG_STR(&lit2, sizeof(lit2))
-					), 5 == scnt || 4 == scnt)
+	else if (scnt = sscanf(str, "%d %02d:%02d:%02d.%09s", &days, &hours, &minutes, &seconds, lit2), 5 == scnt || 4 == scnt)
 	{
 		sign = days < 0 ? SQL_TRUE : SQL_FALSE;
 		st->interval_type = itype;
@@ -617,9 +601,7 @@ interval2istruct(SQLSMALLINT ctype, int precision, const char *str, SQL_INTERVAL
 			st->intval.day_second.fraction = getPrecisionPart(precision, lit2);
 		return TRUE;
 	}
-	else if ((scnt = secure_sscanf(str, &status, "%d %10s %d %10s",
-						ARG_INT(&years), ARG_STR(&lit1, sizeof(lit1)),
-						ARG_INT(&mons), ARG_STR(&lit2, sizeof(lit2)))) >=4)
+	else if ((scnt = sscanf(str, "%d %10s %d %10s", &years, lit1, &mons, lit2)) >=4)
 	{
 		if (strnicmp(lit1, "year", 4) == 0 &&
 		    strnicmp(lit2, "mon", 2) == 0 &&
@@ -635,9 +617,7 @@ interval2istruct(SQLSMALLINT ctype, int precision, const char *str, SQL_INTERVAL
 		}
 		return FALSE;
 	}
-	if ((scnt = secure_sscanf(str, &status, "%d %10s %d",
-					ARG_INT(&years), ARG_STR(&lit1, sizeof(lit1)),
-					ARG_INT(&days))) == 2)
+	if ((scnt = sscanf(str, "%d %10s %d", &years, lit1, &days)) == 2)
 	{
 		sign = years < 0 ? SQL_TRUE : SQL_FALSE;
 		if (SQL_IS_YEAR == itype &&
@@ -674,10 +654,7 @@ interval2istruct(SQLSMALLINT ctype, int precision, const char *str, SQL_INTERVAL
 		/* these formats should've been handled above already */
 		return FALSE;
 	}
-	scnt = secure_sscanf(str, &status, "%d %10s %02d:%02d:%02d.%09s",
-				ARG_INT(&days), ARG_STR(&lit1, sizeof(lit1)),
-				ARG_INT(&hours), ARG_INT(&minutes), ARG_INT(&seconds),
-				ARG_STR(&lit2, sizeof(lit2)));
+	scnt = sscanf(str, "%d %10s %02d:%02d:%02d.%09s", &days, lit1, &hours, &minutes, &seconds, lit2);
 	if (scnt == 5 || scnt == 6)
 	{
 		if (strnicmp(lit1, "day", 3) != 0)
@@ -694,9 +671,7 @@ interval2istruct(SQLSMALLINT ctype, int precision, const char *str, SQL_INTERVAL
 			st->intval.day_second.fraction = getPrecisionPart(precision, lit2);
 		return TRUE;
 	}
-	scnt = secure_sscanf(str, &status, "%02d:%02d:%02d.%09s",
-				ARG_INT(&hours), ARG_INT(&minutes), ARG_INT(&seconds), 
-				ARG_STR(&lit2, sizeof(lit2)));
+	scnt = sscanf(str, "%02d:%02d:%02d.%09s", &hours, &minutes, &seconds, lit2);
 	if (scnt == 3 || scnt == 4)
 	{
 		sign = hours < 0 ? SQL_TRUE : SQL_FALSE;
@@ -874,7 +849,7 @@ static double get_double_value(const char *str)
 #else
 		return (double) -(HUGE_VAL * HUGE_VAL);
 #endif /* INFINITY */
-	return pg_atof(str);
+	return atof(str);
 }
 
 static int char2guid(const char *str, SQLGUID *g)
@@ -885,15 +860,12 @@ static int char2guid(const char *str, SQLGUID *g)
 	 * "unsigned int", so use a temporary variable for it.
 	 */
 	unsigned int Data1;
-	int status = 0;
-	if (secure_sscanf(str, &status,
+	if (sscanf(str,
 		"%08X-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX",
-		ARG_UINT(&Data1),
-		ARG_USHORT(&g->Data2), ARG_USHORT(&g->Data3),
-		ARG_UCHAR(&g->Data4[0]), ARG_UCHAR(&g->Data4[1]),
-		ARG_UCHAR(&g->Data4[2]), ARG_UCHAR(&g->Data4[3]),
-		ARG_UCHAR(&g->Data4[4]), ARG_UCHAR(&g->Data4[5]),
-		ARG_UCHAR(&g->Data4[6]), ARG_UCHAR(&g->Data4[7])) < 11)
+		&Data1,
+		&g->Data2, &g->Data3,
+		&g->Data4[0], &g->Data4[1], &g->Data4[2], &g->Data4[3],
+		&g->Data4[4], &g->Data4[5], &g->Data4[6], &g->Data4[7]) < 11)
 		return COPY_GENERAL_ERROR;
 	g->Data1 = Data1;
 	return COPY_OK;
@@ -1064,12 +1036,12 @@ setup_getdataclass(SQLLEN * const length_return, const char ** const ptr_return,
 		 */
 		len_for_wcs_term = 1;
 	}
-	if (changed || needbuflen + len_for_wcs_term > cbValueMax)
+	if (changed || needbuflen > cbValueMax)
 	{
-		if (needbuflen + len_for_wcs_term > (SQLLEN) pgdc->ttlbuflen)
+		if (needbuflen > (SQLLEN) pgdc->ttlbuflen)
 		{
 			pgdc->ttlbuf = realloc(pgdc->ttlbuf, needbuflen + len_for_wcs_term);
-			pgdc->ttlbuflen = needbuflen + len_for_wcs_term;
+			pgdc->ttlbuflen = needbuflen;
 		}
 
 		already_processed = FALSE;
@@ -1352,7 +1324,7 @@ copy_and_convert_field(StatementClass *stmt,
 		*pIndicatorBindRow = 0;
 	}
 
-	pg_memset(&std_time, 0, sizeof(SIMPLE_TIME));
+	memset(&std_time, 0, sizeof(SIMPLE_TIME));
 
 	MYLOG(0, "field_type = %d, fctype = %d, value = '%s', cbValueMax=" FORMAT_LEN "\n", field_type, fCType, (value == NULL) ? "<NULL>" : value, cbValueMax);
 
@@ -1387,7 +1359,7 @@ MYLOG(0, "null_cvt_date_string=%d\n", conn->connInfo.cvt_null_date_string);
 				case SQL_C_DEFAULT:
 					if (rgbValueBindRow && cbValueMax >= sizeof(DATE_STRUCT))
 					{
-						pg_memset(rgbValueBindRow, 0, cbValueMax);
+						memset(rgbValueBindRow, 0, cbValueMax);
 						if (pcbValueBindRow)
 							*pcbValueBindRow = sizeof(DATE_STRUCT);
 					}
@@ -1397,7 +1369,7 @@ MYLOG(0, "null_cvt_date_string=%d\n", conn->connInfo.cvt_null_date_string);
 #ifdef	UNICODE_SUPPORT
 				case SQL_C_WCHAR:
 					if (rgbValueBindRow && cbValueMax >= WCLEN)
-						pg_memset(rgbValueBindRow, 0, WCLEN);
+						memset(rgbValueBindRow, 0, WCLEN);
 					else
 						result = COPY_RESULT_TRUNCATED;
 					break;
@@ -1444,11 +1416,7 @@ MYLOG(0, "null_cvt_date_string=%d\n", conn->connInfo.cvt_null_date_string);
 			 * PG_TYPE_CHAR,VARCHAR $$$
 			 */
 		case PG_TYPE_DATE:
-			{
-				int status = 0;
-				secure_sscanf(value, &status, "%4d-%2d-%2d",
-				ARG_INT(&std_time.y), ARG_INT(&std_time.m), ARG_INT(&std_time.d));
-			}		
+			sscanf(value, "%4d-%2d-%2d", &std_time.y, &std_time.m, &std_time.d);
 			break;
 
 		case PG_TYPE_TIME:
@@ -1562,8 +1530,7 @@ MYLOG(DETAIL_LOG_LEVEL, "2stime fr=%d\n", std_time.fr);
 				MYLOG(0, "index=(");
 				for (i = 0;; i++)
 				{
-					int status = 0;
-					if (secure_sscanf(vp, &status, "%hi", ARG_SHORT(&shortv)) != 1)
+					if (sscanf(vp, "%hi", &shortv) != 1)
 						break;
 					MYPRINTF(0, " %hi", shortv);
 					nval++;
@@ -1835,29 +1802,29 @@ MYLOG(DETAIL_LOG_LEVEL, "2stime fr=%d\n", std_time.fr);
 			case SQL_C_BIT:
 				len = 1;
 				if (bind_size > 0)
-					*((UCHAR *) rgbValueBindRow) = pg_atoi(neut_str);
+					*((UCHAR *) rgbValueBindRow) = atoi(neut_str);
 				else
-					*((UCHAR *) rgbValue + bind_row) = pg_atoi(neut_str);
+					*((UCHAR *) rgbValue + bind_row) = atoi(neut_str);
 
 				 MYLOG(99, "SQL_C_BIT: bind_row = " FORMAT_POSIROW " val = %d, cb = " FORMAT_LEN ", rgb=%d\n",
-					bind_row, pg_atoi(neut_str), cbValueMax, *((UCHAR *)rgbValue));
+					bind_row, atoi(neut_str), cbValueMax, *((UCHAR *)rgbValue));
 				break;
 
 			case SQL_C_STINYINT:
 			case SQL_C_TINYINT:
 				len = 1;
 				if (bind_size > 0)
-					*((SCHAR *) rgbValueBindRow) = pg_atoi(neut_str);
+					*((SCHAR *) rgbValueBindRow) = atoi(neut_str);
 				else
-					*((SCHAR *) rgbValue + bind_row) = pg_atoi(neut_str);
+					*((SCHAR *) rgbValue + bind_row) = atoi(neut_str);
 				break;
 
 			case SQL_C_UTINYINT:
 				len = 1;
 				if (bind_size > 0)
-					*((UCHAR *) rgbValueBindRow) = pg_atoi(neut_str);
+					*((UCHAR *) rgbValueBindRow) = atoi(neut_str);
 				else
-					*((UCHAR *) rgbValue + bind_row) = pg_atoi(neut_str);
+					*((UCHAR *) rgbValue + bind_row) = atoi(neut_str);
 				break;
 
 			case SQL_C_FLOAT:
@@ -1898,26 +1865,26 @@ MYLOG(DETAIL_LOG_LEVEL, "2stime fr=%d\n", std_time.fr);
 			case SQL_C_SHORT:
 				len = 2;
 				if (bind_size > 0)
-					*((SQLSMALLINT *) rgbValueBindRow) = pg_atoi(neut_str);
+					*((SQLSMALLINT *) rgbValueBindRow) = atoi(neut_str);
 				else
-					*((SQLSMALLINT *) rgbValue + bind_row) = pg_atoi(neut_str);
+					*((SQLSMALLINT *) rgbValue + bind_row) = atoi(neut_str);
 				break;
 
 			case SQL_C_USHORT:
 				len = 2;
 				if (bind_size > 0)
-					*((SQLUSMALLINT *) rgbValueBindRow) = pg_atoi(neut_str);
+					*((SQLUSMALLINT *) rgbValueBindRow) = atoi(neut_str);
 				else
-					*((SQLUSMALLINT *) rgbValue + bind_row) = pg_atoi(neut_str);
+					*((SQLUSMALLINT *) rgbValue + bind_row) = atoi(neut_str);
 				break;
 
 			case SQL_C_SLONG:
 			case SQL_C_LONG:
 				len = 4;
 				if (bind_size > 0)
-					*((SQLINTEGER *) rgbValueBindRow) = pg_atol(neut_str);
+					*((SQLINTEGER *) rgbValueBindRow) = atol(neut_str);
 				else
-					*((SQLINTEGER *) rgbValue + bind_row) = pg_atol(neut_str);
+					*((SQLINTEGER *) rgbValue + bind_row) = atol(neut_str);
 				break;
 
 			case SQL_C_ULONG:
@@ -2424,7 +2391,6 @@ enlarge_query_statement(QueryBuild *qb, size_t newsize)
 #define CVT_APPEND_BINARY(qb, buf, used)					\
 	do {													\
 		size_t	newlimit;									\
-		SQLLEN	result;										\
 															\
 		newlimit = (qb)->npos;								\
 		if (qb->flags & FLGB_HEX_BIN_FORMAT)				\
@@ -2432,20 +2398,9 @@ enlarge_query_statement(QueryBuild *qb, size_t newsize)
 		else												\
 			newlimit += 5 * used;							\
 		ENLARGE_NEWSTATEMENT(qb, newlimit);					\
-		result = convert_to_pgbinary(buf,					\
-									 &qb->query_statement[(qb)->npos], \
-									 used, qb);				\
-		if (result == -1) {									\
-			if (qb->stmt)									\
-				SC_set_error(qb->stmt, STMT_EXEC_ERROR,		\
-							"Binary conversion failed", __func__); \
-			else {											\
-				qb->errormsg = "Binary conversion failed";	\
-				qb->errornumber = STMT_EXEC_ERROR;			\
-			}												\
-			break;											\
-		}													\
-		(qb)->npos += result;								\
+		(qb)->npos += convert_to_pgbinary(buf,				\
+										  &qb->query_statement[(qb)->npos], \
+										  used, qb);		\
 	} while (0)
 
 /*----------
@@ -3766,7 +3721,7 @@ inner_process_tokens(QueryParse *qp, QueryBuild *qb)
 		{
 			TABLE_INFO	ti, *pti = &ti;
 
-			pg_memset(&ti, 0, sizeof(ti));
+			memset(&ti, 0, sizeof(ti));
 			NAME_TO_NAME(ti.schema_name, conn->schemaIns);
 			NAME_TO_NAME(ti.table_name, conn->tableIns);
 			getCOLIfromTI(func, conn, qb->stmt, 0, &pti);
@@ -4108,7 +4063,7 @@ build_libpq_bind_params(StatementClass *stmt,
 		*paramValues = malloc(sizeof(char *) * num_params);
 		if (*paramValues == NULL)
 			goto cleanup;
-		pg_memset(*paramValues, 0, sizeof(char *) * num_params);
+		memset(*paramValues, 0, sizeof(char *) * num_params);
 		*paramLengths = malloc(sizeof(int) * num_params);
 		if (*paramLengths == NULL)
 			goto cleanup;
@@ -4377,7 +4332,7 @@ parse_to_numeric_struct(const char *wv, SQL_NUMERIC_STRUCT *ns, BOOL *overflow)
 	ns->precision = nlen;
 
 	/* Convert the decimal digits to binary */
-	pg_memset(ns->val, 0, sizeof(ns->val));
+	memset(ns->val, 0, sizeof(ns->val));
 	for (dig = 0; dig < nlen; dig++)
 	{
 		UInt4 carry;
@@ -4766,7 +4721,7 @@ MYLOG(DETAIL_LOG_LEVEL, "ipara=%p paramName=%s paramType=%d %d proc_return=%d\n"
 	send_buf = NULL;
 	param_string[0] = '\0';
 	cbuf[0] = '\0';
-	pg_memset(&st, 0, sizeof(st));
+	memset(&st, 0, sizeof(st));
 
 	ivstruct = (SQL_INTERVAL_STRUCT *) buffer;
 	/* Convert input C type to a neutral format */
@@ -5600,8 +5555,7 @@ convert_escape(QueryParse *qp, QueryBuild *qb)
 		while (isspace((UCHAR) qp->statement[++qp->opos]));
 	}
 
-	int status = 0;
-	secure_sscanf(F_OldPtr(qp), &status, "%32s", ARG_STR(&key, sizeof(key)));
+	sscanf(F_OldPtr(qp), "%32s", key);
 	while ((ucv = F_OldChar(qp)) != '\0' && (IS_NOT_SPACE(ucv)))
 		F_OldNext(qp);
 	while ((ucv = F_OldChar(qp)) != '\0' && isspace(ucv))
@@ -6016,7 +5970,6 @@ parse_datetime(const char *buf, SIMPLE_TIME *st)
 				mm,
 				ss;
 	int			nf;
-	int			status = 0;
 	BOOL	bZone;	int	zone;
 
 	y = m = d = hh = mm = ss = 0;
@@ -6040,13 +5993,9 @@ parse_datetime(const char *buf, SIMPLE_TIME *st)
 	if (timestamp2stime(buf, st, &bZone, &zone))
 		return TRUE;
 	if (buf[4] == '-')			/* year first */
-		nf = secure_sscanf(buf, &status, "%4d-%2d-%2d %2d:%2d:%2d",
-				ARG_INT(&y), ARG_INT(&m), ARG_INT(&d),
-				ARG_INT(&hh), ARG_INT(&mm), ARG_INT(&ss));
+		nf = sscanf(buf, "%4d-%2d-%2d %2d:%2d:%2d", &y, &m, &d, &hh, &mm, &ss);
 	else
-		nf = secure_sscanf(buf, &status, "%2d-%2d-%4d %2d:%2d:%2d",
-			ARG_INT(&m), ARG_INT(&d), ARG_INT(&y),
-			ARG_INT(&hh), ARG_INT(&mm), ARG_INT(&ss));
+		nf = sscanf(buf, "%2d-%2d-%4d %2d:%2d:%2d", &m, &d, &y, &hh, &mm, &ss);
 
 	if (nf == 5 || nf == 6)
 	{
@@ -6061,11 +6010,9 @@ parse_datetime(const char *buf, SIMPLE_TIME *st)
 	}
 
 	if (buf[4] == '-')			/* year first */
-		nf = secure_sscanf(buf, &status, "%4d-%2d-%2d",
-				ARG_INT(&y), ARG_INT(&m), ARG_INT(&d));
+		nf = sscanf(buf, "%4d-%2d-%2d", &y, &m, &d);
 	else
-		nf = secure_sscanf(buf, &status, "%2d-%2d-%4d",
-				ARG_INT(&m), ARG_INT(&d), ARG_INT(&y));
+		nf = sscanf(buf, "%2d-%2d-%4d", &m, &d, &y);
 
 	if (nf == 3)
 	{
@@ -6076,8 +6023,7 @@ parse_datetime(const char *buf, SIMPLE_TIME *st)
 		return TRUE;
 	}
 
-	nf = secure_sscanf(buf, &status, "%2d:%2d:%2d",
-			ARG_INT(&hh), ARG_INT(&mm), ARG_INT(&ss));
+	nf = sscanf(buf, "%2d:%2d:%2d", &hh, &mm, &ss);
 	if (nf == 2 || nf == 3)
 	{
 		st->hh = hh;
@@ -6325,7 +6271,6 @@ convert_to_pgbinary(const char *in, char *out, size_t len, QueryBuild *qb)
 	char	escape_in_literal = CC_get_escape(qb->conn);
 	BOOL	esc_double = (qb->param_mode != RPM_BUILDING_BIND_REQUEST &&
 						  0 != escape_in_literal);
-	SQLLEN hex;
 
 	/* use hex format for 9.0 or later servers */
 	if (0 != (qb->flags & FLGB_HEX_BIN_FORMAT))
@@ -6334,9 +6279,7 @@ convert_to_pgbinary(const char *in, char *out, size_t len, QueryBuild *qb)
 			out[o++] = escape_in_literal;
 		out[o++] = '\\';
 		out[o++] = 'x';
-		hex = pg_bin2hex(in, out + o, len);
-		if (hex == -1) return hex;
-		o += hex;
+		o += pg_bin2hex(in, out + o, len);
 		return o;
 	}
 	for (i = 0; i < len; i++)

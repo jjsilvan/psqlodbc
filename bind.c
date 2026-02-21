@@ -142,20 +142,7 @@ PGAPI_BindParameter(HSTMT hstmt,
 }
 
 
-/** 
- * @brief a user-supplied buffer with a database column. 
- * @param hstmt		Statement handle
- * @param icol		Column number (zero-based)
- * @param fCType	Column data type
- * @param rgbValue	Column data
- * @param cbValueMax	Maximum column data size
- * @param pcbValue	Actual column data size
- * @return RETCODE
- * 	SQL_SUCCESS
- * 	SQL_SUCCESS_WITH_INFO
- * 	SQL_ERROR
- * 	SQL_INVALID_HANDLE
-*/
+/*	Associate a user-supplied buffer with a database column. */
 RETCODE		SQL_API
 PGAPI_BindCol(HSTMT hstmt,
 			  SQLUSMALLINT icol,
@@ -522,7 +509,7 @@ extend_parameter_bindings(APDFields *self, int num_params)
 			self->allocated = 0;
 			return;
 		}
-		pg_memset(&new_bindings[self->allocated], 0, sizeof(ParameterInfoClass) * (num_params - self->allocated));
+		memset(&new_bindings[self->allocated], 0, sizeof(ParameterInfoClass) * (num_params - self->allocated));
 
 		self->parameters = new_bindings;
 		self->allocated = num_params;
@@ -555,7 +542,7 @@ extend_iparameter_bindings(IPDFields *self, int num_params)
 			self->allocated = 0;
 			return;
 		}
-		pg_memset(&new_bindings[self->allocated], 0,
+		memset(&new_bindings[self->allocated], 0,
 			sizeof(ParameterImplClass) * (num_params - self->allocated));
 
 		self->parameters = new_bindings;
@@ -981,7 +968,7 @@ extend_putdata_info(PutDataInfo *self, int num_params, BOOL shrink)
 			self->allocated = 0;
 			return;
 		}
-		pg_memset(&new_pdata[self->allocated], 0,
+		memset(&new_pdata[self->allocated], 0,
 			sizeof(PutDataClass) * (num_params - self->allocated));
 
 		self->pdata = new_pdata;

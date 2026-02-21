@@ -41,8 +41,6 @@
 #include "multibyte.h"
 #include "catfunc.h"
 
-#include "secure_sscanf.h"
-
 /*	Trigger related stuff for SQLForeign Keys */
 #define TRIGGER_SHIFT 3
 #define TRIGGER_MASK   0x03
@@ -1069,7 +1067,7 @@ MYLOG(0, "CONVERT_FUNCTIONS=" FORMAT_ULEN "\n", value);
 
 		default:
 			/* unrecognized key */
-			CC_set_error(conn, CONN_INVALID_INFO_TYPE, "Unrecognized key passed to PGAPI_GetInfo.", NULL);
+			CC_set_error(conn, CONN_NOT_IMPLEMENTED_ERROR, "Unrecognized key passed to PGAPI_GetInfo.", NULL);
 			goto cleanup;
 	}
 
@@ -1343,7 +1341,7 @@ PGAPI_GetFunctions(HDBC hdbc,
 
 	if (fFunction == SQL_API_ALL_FUNCTIONS)
 	{
-		pg_memset(pfExists, 0, sizeof(pfExists[0]) * 100);
+		memset(pfExists, 0, sizeof(pfExists[0]) * 100);
 
 		/* ODBC core functions */
 		pfExists[SQL_API_SQLALLOCCONNECT] = TRUE;
@@ -1725,8 +1723,8 @@ MYLOG(0, "leaving output=%s(%d)\n", dest, outlen);
 
 CSTR	like_op_sp = "like ";
 CSTR	like_op_ext = "like E";
-CSTR	eq_op_sp =	"operator(pg_catalog.=) ";
-CSTR	eq_op_ext =	"operator(pg_catalog.=) E";
+CSTR	eq_op_sp =	"= ";
+CSTR	eq_op_ext =	"= E";
 
 #define	 IS_VALID_NAME(str) ((str) && (str)[0])
 
@@ -2023,7 +2021,7 @@ retry_public_schema:
 	 * some time on the query.	If treating system tables as regular
 	 * tables, then dont filter either.
 	 */
-	if ((list_schemas || !list_some) && !pg_atoi(ci->show_system_tables) && !show_system_tables)
+	if ((list_schemas || !list_some) && !atoi(ci->show_system_tables) && !show_system_tables)
 		appendPQExpBufferStr(&tables_query, " and nspname not in ('pg_catalog', 'information_schema', 'pg_toast', 'pg_temp_1')");
 
 	if (!list_some)
@@ -2121,7 +2119,7 @@ retry_public_schema:
 		 * system tables as regular tables, then no need to do this test.
 		 */
 		systable = FALSE;
-		if (!pg_atoi(ci->show_system_tables))
+		if (!atoi(ci->show_system_tables))
 		{
 			if (stricmp(table_owner, "pg_catalog") == 0 ||
 			    stricmp(table_owner, "pg_toast") == 0 ||
@@ -2460,7 +2458,7 @@ retry_public_schema:
 	appendPQExpBufferStr(&columns_query, ") inner join pg_catalog.pg_attribute a"
 		" on (not a.attisdropped)");
 	if (0 == attnum && (NULL == escColumnName || like_or_eq != eqop))
-		appendPQExpBufferStr(&columns_query, " and a.attnum operator(pg_catalog.>) 0");
+		appendPQExpBufferStr(&columns_query, " and a.attnum > 0");
 	if (search_by_ids)
 	{
 		if (attnum != 0)
@@ -2469,9 +2467,9 @@ retry_public_schema:
 	else if (escColumnName)
 		appendPQExpBuffer(&columns_query, " and a.attname %s'%s'", op_string, escColumnName);
 	appendPQExpBufferStr(&columns_query,
-		" and a.attrelid operator(pg_catalog.=) c.oid) inner join pg_catalog.pg_type t"
-		" on t.oid operator(pg_catalog.=) a.atttypid) left outer join pg_attrdef d"
-		" on a.atthasdef and d.adrelid operator(pg_catalog.=) a.attrelid and d.adnum operator(pg_catalog.=) a.attnum");
+		" and a.attrelid = c.oid) inner join pg_catalog.pg_type t"
+		" on t.oid = a.atttypid) left outer join pg_attrdef d"
+		" on a.atthasdef and d.adrelid = a.attrelid and d.adnum = a.attnum");
 	appendPQExpBufferStr(&columns_query, " order by n.nspname, c.relname, attnum");
 	if (PQExpBufferDataBroken(columns_query))
 	{
@@ -2485,7 +2483,7 @@ retry_public_schema:
 		goto cleanup;
 	}
 
-	MYLOG(0, "col_stmt operator(pg_catalog.=) %p\n", col_stmt);
+	MYLOG(0, "col_stmt = %p\n", col_stmt);
 
 	result = PGAPI_ExecDirect(col_stmt, (SQLCHAR *) columns_query.data, SQL_NTS, PODBC_RDONLY);
 	if (!SQL_SUCCEEDED(result))
@@ -2758,7 +2756,7 @@ MYLOG(0, " and the data=%s\n", attdef);
 		switch (field_type)
 		{
 			case PG_TYPE_OID:
-				if (0 != pg_atoi(ci->fake_oid_index))
+				if (0 != atoi(ci->fake_oid_index))
 				{
 					auto_unique = SQL_TRUE;
 					set_tuplefield_string(&tuple[COLUMNS_TYPE_NAME], "identity");
@@ -2902,67 +2900,7 @@ cleanup:
 	return ret;
 }
 
-/**  @brief Retrieve the primary or unique key columns for the specified table
- * 
- * @param conn ConnectionClass
- * @param stmt StatementClass
- * @param szTableName Table name
- * @param szTableQualifier Schema name
- * @param szSchemaName Schema name
- * @return QResultClass
- */
-static QResultClass *
-findPrimaryOrUnique(ConnectionClass *conn, StatementClass * stmt, const SQLCHAR * szTableName, const SQLCHAR *szTableQualifier, const SQLCHAR * szSchemaName, bool primaryOrUnique) {
-	PQExpBufferData		columns_query = {0};
 
-	initPQExpBuffer(&columns_query);
-	printfPQExpBuffer(&columns_query, "select NULL as \"SCOPE\","
-										"a.attname AS \"COLUMN_NAME\","
-										"t.typname AS \"DATA_TYPE\","
-										"t.typname AS \"TYPE_NAME\","
-										"t.typlen AS \"COLUMN_SIZE\","
-										"a.attlen AS \"BUFFER_LENGTH\","
-										"case "
-										"when t.typname = 'numeric' then"
-											" case when a.atttypmod > -1 then 6"
-											" else a.atttypmod::int4"
-											" end"
-										" else 0"
-										" end AS \"DECIMAL_DIGITS\","
-										"1 AS \"PSEUDO_COLUMN\" "
-									"FROM pg_class c "
-									"INNER JOIN pg_namespace n ON n.oid = c.relnamespace "
-									"INNER JOIN pg_attribute a ON a.attrelid = c.oid "
-									"INNER JOIN pg_type t on a.atttypid = t.oid "
-									"LEFT JOIN pg_index i ON i.indrelid = c.oid "
-									"AND a.attnum = ANY (i.indkey[0:(i.indnkeyatts - 1)]) ");
-									if (primaryOrUnique) {
-											appendPQExpBuffer(&columns_query, "WHERE i.indisprimary and a.attnum > 0 and c.relname='%s'" , szTableName );
-										} else {
-											appendPQExpBuffer(&columns_query, "WHERE i.indisunique and a.attnum > 0 and c.relname ='%s'", szTableName);
-										}
-
-
-	if (szTableQualifier != NULL)
-		appendPQExpBuffer(&columns_query, " and n.nspname = '%s'" , szSchemaName);
-
-	return CC_send_query(conn, columns_query.data, NULL, READ_ONLY_QUERY, stmt);
-}
-
-/**  @brief Retrieve the optimal set of columns that uniquely identifies a row in the specified table (when IdentifierType is SQL_BEST_ROWID)
- * The columns that are automatically updated when any value in the row is updated (when IdentifierType is SQL_ROWVER)
- * @param hstmt 
- * @param fColType 
- * @param szTableQualifier 
- * @param cbTableQualifier 
- *  @param szTableOwner 
- *  @param cbTableOwner 
- *  @param szTableName 
- *  @param cbTableName 
- *  @param fScope 
- *  @param fNullable 
- *  @return 
-*/
 RETCODE		SQL_API
 PGAPI_SpecialColumns(HSTMT hstmt,
 					 SQLUSMALLINT fColType,
@@ -3041,10 +2979,9 @@ retry_public_schema:
        appendPQExpBufferStr(&columns_query, ", c.relhasoids");
    else
        appendPQExpBufferStr(&columns_query, ", 0 as relhasoids");
-
 	appendPQExpBufferStr(&columns_query, " from pg_catalog.pg_namespace u,"
 					" pg_catalog.pg_class c where "
-					"u.oid operator(pg_catalog.=) c.relnamespace");
+					"u.oid = c.relnamespace");
 
 	/* TableName cannot contain a string search pattern */
 	if (escTableName)
@@ -3091,7 +3028,6 @@ retry_public_schema:
 		goto cleanup;
 	}
 
-	// check to see if the relation has rules
 	result = PGAPI_BindCol(col_stmt, 1, internal_asis_type,
 					relhasrules, sizeof(relhasrules), NULL);
 	if (!SQL_SUCCEEDED(result))
@@ -3099,24 +3035,18 @@ retry_public_schema:
 		goto cleanup;
 	}
 
-	// bind to relkind to check if a view or not
 	result = PGAPI_BindCol(col_stmt, 2, internal_asis_type,
 					relkind, sizeof(relkind), NULL);
 	if (!SQL_SUCCEEDED(result))
 	{
 		goto cleanup;
 	}
-
-	// check to see if the relation has oids, this is only done for versions less than 12
-	if (PG_VERSION_LT(conn, 12.0))
+	relhasoids[0] = '1';
+	result = PGAPI_BindCol(col_stmt, 3, internal_asis_type,
+				relhasoids, sizeof(relhasoids), NULL);
+	if (!SQL_SUCCEEDED(result))
 	{
-		relhasoids[0] = '1';
-		result = PGAPI_BindCol(col_stmt, 3, internal_asis_type,
-					relhasoids, sizeof(relhasoids), NULL);
-		if (!SQL_SUCCEEDED(result))
-		{
-			goto cleanup;
-		}
+		goto cleanup;
 	}
 
 	result = PGAPI_Fetch(col_stmt);
@@ -3148,7 +3078,6 @@ retry_public_schema:
 	if (relisaview)
 	{
 		/* there's no oid for views */
-		// TODO: this may still work for views since we don't really have to rely on oid for best rowid
 		if (fColType == SQL_BEST_ROWID)
 		{
 			ret = SQL_SUCCESS;
@@ -3169,50 +3098,32 @@ retry_public_schema:
 			set_tuplefield_int4(&tuple[SPECOLS_BUFFER_LENGTH], PGTYPE_ATTR_BUFFER_LENGTH(conn, the_type, atttypmod));
 			set_tuplefield_int2(&tuple[SPECOLS_DECIMAL_DIGITS], PGTYPE_ATTR_DECIMAL_DIGITS(conn, the_type, atttypmod));
 			set_tuplefield_int2(&tuple[SPECOLS_PSEUDO_COLUMN], SQL_PC_NOT_PSEUDO);
-			MYLOG(DETAIL_LOG_LEVEL, "Add ctid\n");
+MYLOG(DETAIL_LOG_LEVEL, "Add ctid\n");
 		}
 	}
 	else
 	{
-
+		/* use the oid value for the rowid */
 		if (fColType == SQL_BEST_ROWID)
 		{
 			Int2	the_type = PG_TYPE_OID;
 			int	atttypmod = -1;
 
-			if (relhasoids[0] == '1')
+			if (relhasoids[0] != '1')
 			{
-				tuple = QR_AddNew(res);
-
-				set_tuplefield_int2(&tuple[SPECOLS_SCOPE], SQL_SCOPE_SESSION);
-				set_tuplefield_string(&tuple[SPECOLS_COLUMN_NAME], OID_NAME);
-				set_tuplefield_int2(&tuple[SPECOLS_DATA_TYPE], PGTYPE_ATTR_TO_CONCISE_TYPE(conn, the_type, atttypmod));
-				set_tuplefield_string(&tuple[SPECOLS_TYPE_NAME], pgtype_attr_to_name(conn, the_type, atttypmod, TRUE));
-				set_tuplefield_int4(&tuple[SPECOLS_COLUMN_SIZE], PGTYPE_ATTR_COLUMN_SIZE(conn, the_type, atttypmod));
-				set_tuplefield_int4(&tuple[SPECOLS_BUFFER_LENGTH], PGTYPE_ATTR_BUFFER_LENGTH(conn, the_type, atttypmod));
-				set_tuplefield_int2(&tuple[SPECOLS_DECIMAL_DIGITS], PGTYPE_ATTR_DECIMAL_DIGITS(conn, the_type, atttypmod));
-				set_tuplefield_int2(&tuple[SPECOLS_PSEUDO_COLUMN], SQL_PC_PSEUDO);
-			} else {			
-				// look for primary first
-				res = findPrimaryOrUnique(conn, stmt, szTableName, szTableQualifier, szSchemaName, TRUE);
-				if (!QR_command_maybe_successful(res))
-				{
-					SC_set_error(stmt, STMT_EXEC_ERROR, "PGAPI_Special query error", func);
-					goto cleanup;
-				}
-				if (0 == QR_get_num_total_tuples(res))
-				{
-					// didn't find primary now look for uniaue
-					res = findPrimaryOrUnique(conn, stmt, szTableName, szTableName, szSchemaName, FALSE);
-					if (!QR_command_maybe_successful(res))
-					{
-						SC_set_error(stmt, STMT_EXEC_ERROR, "PGAPI_Special query error", func);
-						goto cleanup;
-					}
-				}
-
-				SC_set_Result(stmt, res);
+				ret = SQL_SUCCESS;
+				goto cleanup;
 			}
+			tuple = QR_AddNew(res);
+
+			set_tuplefield_int2(&tuple[SPECOLS_SCOPE], SQL_SCOPE_SESSION);
+			set_tuplefield_string(&tuple[SPECOLS_COLUMN_NAME], OID_NAME);
+			set_tuplefield_int2(&tuple[SPECOLS_DATA_TYPE], PGTYPE_ATTR_TO_CONCISE_TYPE(conn, the_type, atttypmod));
+			set_tuplefield_string(&tuple[SPECOLS_TYPE_NAME], pgtype_attr_to_name(conn, the_type, atttypmod, TRUE));
+			set_tuplefield_int4(&tuple[SPECOLS_COLUMN_SIZE], PGTYPE_ATTR_COLUMN_SIZE(conn, the_type, atttypmod));
+			set_tuplefield_int4(&tuple[SPECOLS_BUFFER_LENGTH], PGTYPE_ATTR_BUFFER_LENGTH(conn, the_type, atttypmod));
+			set_tuplefield_int2(&tuple[SPECOLS_DECIMAL_DIGITS], PGTYPE_ATTR_DECIMAL_DIGITS(conn, the_type, atttypmod));
+			set_tuplefield_int2(&tuple[SPECOLS_PSEUDO_COLUMN], SQL_PC_PSEUDO);
 		}
 		else if (fColType == SQL_ROWVER)
 		{
@@ -3482,10 +3393,10 @@ PGAPI_Statistics(HSTMT hstmt,
 		" pg_catalog.pg_namespace n"
 		" where d.relname %s'%s'"
 		" and n.nspname %s'%s'"
-		" and n.oid operator(pg_catalog.=) d.relnamespace"
-		" and d.oid operator(pg_catalog.=) i.indrelid"
-		" and i.indexrelid operator(pg_catalog.=) c.oid"
-		" and c.relam operator(pg_catalog.=) a.oid order by"
+		" and n.oid = d.relnamespace"
+		" and d.oid = i.indrelid"
+		" and i.indexrelid = c.oid"
+		" and c.relam = a.oid order by"
         , PG_VERSION_LT(conn, 12.0) ? "d.relhasoids" : "0"
 		, PG_VERSION_GE(conn, 8.3) ? "i.indoption" : "0"
 		, eq_string, escTableName, eq_string, escSchemaName);
@@ -3583,7 +3494,7 @@ PGAPI_Statistics(HSTMT hstmt,
 	relhasrules[0] = '0';
 	result = PGAPI_Fetch(indx_stmt);
 	/* fake index of OID */
-	if (relhasoids && relhasrules[0] != '1' && pg_atoi(ci->show_oid_column) && pg_atoi(ci->fake_oid_index))
+	if (relhasoids && relhasrules[0] != '1' && atoi(ci->show_oid_column) && atoi(ci->fake_oid_index))
 	{
 		tuple = QR_AddNew(res);
 
@@ -3619,7 +3530,7 @@ PGAPI_Statistics(HSTMT hstmt,
 	{
 		/* If only requesting unique indexes, then just return those. */
 		if (fUnique == SQL_INDEX_ALL ||
-			(fUnique == SQL_INDEX_UNIQUE && pg_atoi(isunique)))
+			(fUnique == SQL_INDEX_UNIQUE && atoi(isunique)))
 		{
 			int	colcnt, attnum;
 
@@ -3637,7 +3548,7 @@ PGAPI_Statistics(HSTMT hstmt,
 
 				/* non-unique index? */
 				if (ci->drivers.unique_index)
-					set_tuplefield_int2(&tuple[STATS_NON_UNIQUE], (Int2) (pg_atoi(isunique) ? FALSE : TRUE));
+					set_tuplefield_int2(&tuple[STATS_NON_UNIQUE], (Int2) (atoi(isunique) ? FALSE : TRUE));
 				else
 					set_tuplefield_int2(&tuple[STATS_NON_UNIQUE], TRUE);
 
@@ -3649,7 +3560,7 @@ PGAPI_Statistics(HSTMT hstmt,
 				 * Clustered/HASH index?
 				 */
 				set_tuplefield_int2(&tuple[STATS_TYPE], (Int2)
-							   (pg_atoi(isclustered) ? SQL_INDEX_CLUSTERED :
+							   (atoi(isclustered) ? SQL_INDEX_CLUSTERED :
 								(!strncmp(ishash, "hash", 4)) ? SQL_INDEX_HASHED : SQL_INDEX_OTHER));
 				set_tuplefield_int2(&tuple[STATS_SEQ_IN_INDEX], (Int2) i);
 
@@ -4047,15 +3958,15 @@ retry_public_schema:
 					appendPQExpBuffer(&tables_query, " where tc.oid = %u", reloid);
 
 				appendPQExpBufferStr(&tables_query,
-					" AND tc.oid operator(pg_catalog.=) i.indrelid"
-					" AND n.oid operator(pg_catalog.=) tc.relnamespace"
-					" AND i.indisprimary operator(pg_catalog.=) 't'"
-					" AND ia.attrelid operator(pg_catalog.=) i.indexrelid"
-					" AND ta.attrelid operator(pg_catalog.=) i.indrelid"
-					" AND ta.attnum operator(pg_catalog.=) i.indkey[ia.attnum-1]"
+					" AND tc.oid = i.indrelid"
+					" AND n.oid = tc.relnamespace"
+					" AND i.indisprimary = 't'"
+					" AND ia.attrelid = i.indexrelid"
+					" AND ta.attrelid = i.indrelid"
+					" AND ta.attnum = i.indkey[ia.attnum-1]"
 					" AND (NOT ta.attisdropped)"
 					" AND (NOT ia.attisdropped)"
-					" AND ic.oid operator(pg_catalog.=) i.indexrelid"
+					" AND ic.oid = i.indexrelid"
 					" order by ia.attnum");
 				break;
 			case 2:
@@ -4069,11 +3980,11 @@ retry_public_schema:
 					" pg_catalog.pg_index i, pg_catalog.pg_namespace n"
 					" where ic.relname %s'%s_pkey'"
 					" AND n.nspname %s'%s'"
-					" AND ic.oid operator(pg_catalog.=) i.indexrelid"
-					" AND n.oid operator(pg_catalog.=) ic.relnamespace"
-					" AND ia.attrelid operator(pg_catalog.=) i.indexrelid"
-					" AND ta.attrelid operator(pg_catalog.=) i.indrelid"
-					" AND ta.attnum operator(pg_catalog.=) i.indkey[ia.attnum-1]"
+					" AND ic.oid = i.indexrelid"
+					" AND n.oid = ic.relnamespace"
+					" AND ia.attrelid = i.indexrelid"
+					" AND ta.attrelid = i.indrelid"
+					" AND ta.attnum = i.indkey[ia.attnum-1]"
 					" AND (NOT ta.attisdropped)"
 					" AND (NOT ia.attisdropped)"
 					" order by ia.attnum", eq_string, escTableName, eq_string, pkscm);
@@ -4225,7 +4136,7 @@ getClientColumnName(ConnectionClass *conn, UInt4 relid, char *serverColumnName, 
 	if (!bError && continueExec)
 	{
 		SPRINTF_FIXED(query, "select attnum from pg_attribute "
-			"where attrelid operator(pg_catalog.=) %u and attname %s'%s'",
+			"where attrelid = %u and attname %s'%s'",
 			relid, eq_string, serverColumnName);
 		if (res = CC_send_query(conn, query, NULL, flag, NULL), QR_command_maybe_successful(res))
 		{
@@ -4247,7 +4158,7 @@ getClientColumnName(ConnectionClass *conn, UInt4 relid, char *serverColumnName, 
 	QR_Destructor(res);
 	if (bError || !continueExec)
 		return ret;
-	SPRINTF_FIXED(query, "select attname from pg_attribute where attrelid operator(pg_catalog.=) %u and attnum operator(pg_catalog.=) %s", relid, saveattnum);
+	SPRINTF_FIXED(query, "select attname from pg_attribute where attrelid = %u and attnum = %s", relid, saveattnum);
 	if (res = CC_send_query(conn, query, NULL, flag, NULL), QR_command_maybe_successful(res))
 	{
 		if (QR_get_num_cached_tuples(res) > 0)
@@ -4445,25 +4356,25 @@ PGAPI_ForeignKeys_old(HSTMT hstmt,
 			"		pg_catalog.pg_class pc1, "
 			"		pg_catalog.pg_namespace pn, "
 			"		pg_catalog.pg_namespace pn1 "
-			"WHERE	pt.tgrelid operator(pg_catalog.=) pc.oid "
-			"AND pp.oid operator(pg_catalog.=) pt.tgfoid "
-			"AND pt1.tgconstrrelid operator(pg_catalog.=) pc.oid "
-			"AND pp1.oid operator(pg_catalog.=) pt1.tgfoid "
-			"AND pt2.tgfoid operator(pg_catalog.=) pp2.oid "
-			"AND pt2.tgconstrrelid operator(pg_catalog.=) pc.oid "
+			"WHERE	pt.tgrelid = pc.oid "
+			"AND pp.oid = pt.tgfoid "
+			"AND pt1.tgconstrrelid = pc.oid "
+			"AND pp1.oid = pt1.tgfoid "
+			"AND pt2.tgfoid = pp2.oid "
+			"AND pt2.tgconstrrelid = pc.oid "
 			"AND ((pc.relname %s'%s') "
-			"AND (pn1.oid operator(pg_catalog.=) pc.relnamespace) "
+			"AND (pn1.oid = pc.relnamespace) "
 			"AND (pn1.nspname %s'%s') "
 			"AND (pp.proname LIKE '%%ins') "
 			"AND (pp1.proname LIKE '%%upd') "
 			"AND (pp1.proname not LIKE '%%check%%') "
 			"AND (pp2.proname LIKE '%%del') "
-			"AND (pt1.tgrelid operator(pg_catalog.=) pt.tgconstrrelid) "
-			"AND (pt1.tgconstrname operator(pg_catalog.=) pt.tgconstrname) "
-			"AND (pt2.tgrelid operator(pg_catalog.=) pt.tgconstrrelid) "
-			"AND (pt2.tgconstrname operator(pg_catalog.=) pt.tgconstrname) "
-			"AND (pt.tgconstrrelid operator(pg_catalog.=) pc1.oid) "
-			"AND (pc1.relnamespace operator(pg_catalog.=) pn.oid))"
+			"AND (pt1.tgrelid=pt.tgconstrrelid) "
+			"AND (pt1.tgconstrname=pt.tgconstrname) "
+			"AND (pt2.tgrelid=pt.tgconstrrelid) "
+			"AND (pt2.tgconstrname=pt.tgconstrname) "
+			"AND (pt.tgconstrrelid=pc1.oid) "
+			"AND (pc1.relnamespace=pn.oid))"
 			" order by pt.tgconstrname",
 			eq_string, escFkTableName, eq_string, escSchemaName);
 		free(escSchemaName);
@@ -4769,23 +4680,23 @@ PGAPI_ForeignKeys_old(HSTMT hstmt,
 			"	pg_catalog.pg_namespace pn1 "
 			"WHERE  pc.relname %s'%s' "
 			"	AND pn.nspname %s'%s' "
-			"	AND pc.relnamespace operator(pg_catalog.=) pn.oid "
-			"	AND pt.tgconstrrelid operator(pg_catalog.=) pc.oid "
-			"	AND pp.oid operator(pg_catalog.=) pt.tgfoid "
+			"	AND pc.relnamespace = pn.oid "
+			"	AND pt.tgconstrrelid = pc.oid "
+			"	AND pp.oid = pt.tgfoid "
 			"	AND pp.proname Like '%%ins' "
-			"	AND pt1.tgconstrname operator(pg_catalog.=) pt.tgconstrname "
-			"	AND pt1.tgconstrrelid operator(pg_catalog.=) pt.tgrelid "
-			"	AND pt1.tgrelid operator(pg_catalog.=) pc.oid "
-			"	AND pc1.oid operator(pg_catalog.=) pt.tgrelid "
-			"	AND pp1.oid operator(pg_catalog.=) pt1.tgfoid "
+			"	AND pt1.tgconstrname = pt.tgconstrname "
+			"	AND pt1.tgconstrrelid = pt.tgrelid "
+			"	AND pt1.tgrelid = pc.oid "
+			"	AND pc1.oid = pt.tgrelid "
+			"	AND pp1.oid = pt1.tgfoid "
 			"	AND pp1.proname like '%%upd' "
 			"	AND (pp1.proname not like '%%check%%') "
-			"	AND pt2.tgconstrname operator(pg_catalog.=) pt.tgconstrname "
-			"	AND pt2.tgconstrrelid operator(pg_catalog.=) pt.tgrelid "
-			"	AND pt2.tgrelid operator(pg_catalog.=) pc.oid "
-			"	AND pp2.oid operator(pg_catalog.=) pt2.tgfoid "
+			"	AND pt2.tgconstrname = pt.tgconstrname "
+			"	AND pt2.tgconstrrelid = pt.tgrelid "
+			"	AND pt2.tgrelid = pc.oid "
+			"	AND pp2.oid = pt2.tgfoid "
 			"	AND pp2.proname Like '%%del' "
-			"	AND pn1.oid operator(pg_catalog.=) pc1.relnamespace "
+			"	AND pn1.oid = pc1.relnamespace "
 			" order by pt.tgconstrname",
 			eq_string, escPkTableName, eq_string, escSchemaName);
 		free(escSchemaName);
@@ -5197,14 +5108,14 @@ PGAPI_ProcedureColumns(HSTMT hstmt,
 	}
 #ifdef	PRORET_COUNT
 	appendPQExpBufferStr(&proc_query, " from ((pg_catalog.pg_namespace n inner join"
-			   " pg_catalog.pg_proc p on p.pronamespace operator(pg_catalog.=) n.oid)"
-		" inner join pg_type t on t.oid operator(pg_catalog.=) p.prorettype)"
-		" left outer join pg_attribute a on a.attrelid operator(pg_catalog.=) t.typrelid "
-		" and attnum operator(pg_catalog.>) 0 and not attisdropped where");
+			   " pg_catalog.pg_proc p on p.pronamespace = n.oid)"
+		" inner join pg_type t on t.oid = p.prorettype)"
+		" left outer join pg_attribute a on a.attrelid = t.typrelid "
+		" and attnum > 0 and not attisdropped where");
 #else
 	appendPQExpBufferStr(&proc_query, " from pg_catalog.pg_namespace n,"
 			   " pg_catalog.pg_proc p where");
-			   " p.pronamespace operator(pg_catalog.=) n.oid  and"
+			   " p.pronamespace = n.oid  and"
 			   " (not proretset) and");
 #endif /* PRORET_COUNT */
 	appendPQExpBuffer(&proc_query,
@@ -5381,8 +5292,7 @@ MYLOG(0, "atttypid=%s\n", atttypid ? atttypid : "(null)");
 						params = NULL;
 					else
 					{
-						int status = 0;
-						secure_sscanf(params, &status, "%u", ARG_UINT(&pgtype));
+						sscanf(params, "%u", &pgtype);
 						while (isdigit((unsigned char) *params))
 							params++;
 					}
@@ -5481,7 +5391,7 @@ MYLOG(0, "atttypid=%s\n", atttypid ? atttypid : "(null)");
 			}
 			else
 			{
-				typid = pg_atoi(atttypid);
+				typid = atoi(atttypid);
 				attname = QR_get_value_backend_text(tres, i, attname_pos);
 			}
 			tuple = QR_AddNew(res);
@@ -5769,11 +5679,11 @@ retry_public_schema:
 
 	if (escTableName)
 		appendPQExpBuffer(&proc_query, " relname %s'%s' and", op_string, escTableName);
-	appendPQExpBufferStr(&proc_query, " pg_namespace.oid operator(pg_catalog.=) relnamespace and relkind in " TABLE_IN_RELKIND " and");
+	appendPQExpBufferStr(&proc_query, " pg_namespace.oid = relnamespace and relkind in " TABLE_IN_RELKIND " and");
 	if ((!escTableName) && (!escSchemaName))
 		appendPQExpBufferStr(&proc_query, " nspname not in ('pg_catalog', 'information_schema') and");
 
-	appendPQExpBufferStr(&proc_query, " pg_user.usesysid operator(pg_catalog.=) relowner");
+	appendPQExpBufferStr(&proc_query, " pg_user.usesysid = relowner");
 	if (PQExpBufferDataBroken(proc_query))
 	{
 		SC_set_error(stmt, STMT_NO_MEMORY_ERROR, "Out of memory in PGAPI_TablePrivileges()", func);
@@ -5820,7 +5730,7 @@ retry_public_schema:
 	}
 	for (i = 0; i < tablecount; i++)
 	{
-		pg_memset(useracl, 0, usercount * sizeof(char[ACLMAX]));
+		memset(useracl, 0, usercount * sizeof(char[ACLMAX]));
 		acl = (char *) QR_get_value_backend_text(wres, i, 2);
 		if (acl && acl[0] == '{')
 			user = acl + 1;
@@ -6101,28 +6011,28 @@ PGAPI_ForeignKeys_new(HSTMT hstmt,
 		"\n  from pg_catalog.pg_constraint cn"
 		",\n	pg_catalog.pg_class c"
 		",\n	pg_catalog.pg_namespace n"
-		"\n  where contype operator(pg_catalog.=) 'f' %s"
+		"\n  where contype = 'f' %s"
 		"\n   and  relname %s'%s'"
-		"\n   and  n.oid operator(pg_catalog.=) c.relnamespace"
+		"\n   and  n.oid = c.relnamespace"
 		"\n   and  n.nspname %s'%s'"
 		"\n ) ref"
 		"\n inner join pg_catalog.pg_class c1"
-		"\n  on c1.oid operator(pg_catalog.=) ref.conrelid)"
+		"\n  on c1.oid = ref.conrelid)"
 		"\n inner join pg_catalog.pg_namespace n1"
-		"\n  on  n1.oid operator(pg_catalog.=) c1.relnamespace)"
+		"\n  on  n1.oid = c1.relnamespace)"
 		"\n inner join pg_catalog.pg_attribute a1"
-		"\n  on  a1.attrelid operator(pg_catalog.=) c1.oid"
-		"\n  and  a1.attnum operator(pg_catalog.=) conkey[i])"
+		"\n  on  a1.attrelid = c1.oid"
+		"\n  and  a1.attnum = conkey[i])"
 		"\n inner join pg_catalog.pg_class c2"
-		"\n  on  c2.oid operator(pg_catalog.=) ref.confrelid)"
+		"\n  on  c2.oid = ref.confrelid)"
 		"\n inner join pg_catalog.pg_namespace n2"
-		"\n  on  n2.oid operator(pg_catalog.=) c2.relnamespace)"
+		"\n  on  n2.oid = c2.relnamespace)"
 		"\n inner join pg_catalog.pg_attribute a2"
-		"\n  on  a2.attrelid operator(pg_catalog.=) c2.oid"
-		"\n  and  a2.attnum operator(pg_catalog.=) confkey[i])"
+		"\n  on  a2.attrelid = c2.oid"
+		"\n  and  a2.attnum = confkey[i])"
 		"\n left outer join pg_catalog.pg_constraint cn"
-		"\n  on cn.conrelid operator(pg_catalog.=) ref.confrelid"
-		"\n  and cn.contype operator(pg_catalog.=) 'p')"
+		"\n  on cn.conrelid = ref.confrelid"
+		"\n  and cn.contype = 'p')"
 		, catName
 		, scmName1
 		, catName

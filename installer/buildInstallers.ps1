@@ -256,12 +256,15 @@ function buildInstaller([string]$CPUTYPE)
 
 	[string []]$libpqRelArgs=@()
 	for ($i=0; $i -lt $maxmem; $i++) {
-		$libpqRelArgs += "-d", ("LIBPQMEM$i=" + $libpqmem[$i])
+		$libpqRelArgs += ("-dLIBPQMEM$i=" + $libpqmem[$i])
 	}
 
 	if (-not(Test-Path -Path $CPUTYPE)) {
 		New-Item -ItemType directory -Path $CPUTYPE | Out-Null
 	}
+
+	$PRODUCTCODE = [GUID]::NewGuid()
+	Write-Host "PRODUCTCODE: $PRODUCTCODE"
 
 	try {
 		pushd "$scriptPath"
@@ -269,16 +272,34 @@ function buildInstaller([string]$CPUTYPE)
 		Write-Host ".`nBuilding psqlODBC/$SUBLOC merge module..."
 		$BINBASE = GetObjbase ".."
 		$INSTBASE = GetObjbase ".\$CPUTYPE" "installer\$CPUTYPE"
-		wix build --nologo -arch $CPUTYPE $libpqRelArgs -d "VERSION=$VERSION" -d "SUBLOC=$SUBLOC" -d "LIBPQBINDIR=$LIBPQBINDIR" -d "LIBPQMSVCDLL=$LIBPQMSVCDLL" -d "LIBPQMSVCSYS=$LIBPQMSVCSYS" -d "PODBCMSVCDLL=$PODBCMSVCDLL" -d "PODBCMSVPDLL=$PODBCMSVPDLL" -d "PODBCMSVCSYS=$PODBCMSVCSYS" -d "PODBCMSVPSYS=$PODBCMSVPSYS" -d "NoPDB=$NoPDB" -d "BINBASE=$BINBASE" -o $INSTBASE\psqlodbc_$CPUTYPE.msm psqlodbcm_cpu.wxs
+		candle -nologo $libpqRelArgs "-dPlatform=$CPUTYPE" "-dVERSION=$VERSION" "-dSUBLOC=$SUBLOC" "-dLIBPQBINDIR=$LIBPQBINDIR" "-dLIBPQMSVCDLL=$LIBPQMSVCDLL" "-dLIBPQMSVCSYS=$LIBPQMSVCSYS" "-dPODBCMSVCDLL=$PODBCMSVCDLL" "-dPODBCMSVPDLL=$PODBCMSVPDLL" "-dPODBCMSVCSYS=$PODBCMSVCSYS" "-dPODBCMSVPSYS=$PODBCMSVPSYS" "-dNoPDB=$NoPDB" "-dBINBASE=$BINBASE" -o $INSTBASE\psqlodbcm.wixobj psqlodbcm_cpu.wxs
 		if ($LASTEXITCODE -ne 0) {
 			throw "Failed to build merge module"
 		}
 
+		Write-Host ".`nLinking psqlODBC merge module..."
+		light -sval -nologo -o $INSTBASE\psqlodbc_$CPUTYPE.msm $INSTBASE\psqlodbcm.wixobj
+		if ($LASTEXITCODE -ne 0) {
+			throw "Failed to link merge module"
+		}
+
 		Write-Host ".`nBuilding psqlODBC installer database..."
 
-		wix build --nologo -arch $CPUTYPE -ext WixToolset.UI.wixext -d "VERSION=$VERSION" -d "SUBLOC=$SUBLOC" -d "INSTBASE=$INSTBASE" -o $INSTBASE\psqlodbc_$CPUTYPE.msi psqlodbc_cpu.wxs
+		candle -nologo "-dPlatform=$CPUTYPE" "-dVERSION=$VERSION" "-dSUBLOC=$SUBLOC" "-dPRODUCTCODE=$PRODUCTCODE" "-dINSTBASE=$INSTBASE" -o $INSTBASE\psqlodbc.wixobj psqlodbc_cpu.wxs
 		if ($LASTEXITCODE -ne 0) {
 			throw "Failed to build installer database"
+		}
+
+		Write-Host ".`nLinking psqlODBC installer database..."
+		light -sval -nologo -ext WixUIExtension -cultures:en-us -o $INSTBASE\psqlodbc_$CPUTYPE.msi $INSTBASE\psqlodbc.wixobj
+		if ($LASTEXITCODE -ne 0) {
+			throw "Failed to link installer database"
+		}
+
+		Write-Host ".`nModifying psqlODBC installer database..."
+		cscript modify_msi.vbs $INSTBASE\psqlodbc_$CPUTYPE.msi
+		if ($LASTEXITCODE -ne 0) {
+			throw "Failed to modify installer database"
 		}
 
 		Write-Host ".`nDone!`n"
